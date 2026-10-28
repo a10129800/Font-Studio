@@ -24,6 +24,8 @@ const api: FontStudioAPI = {
     },
     toggleFavorite: (fontId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.FONTS_TOGGLE_FAVORITE, fontId),
+    setFavoritesBatch: (fontIds: string[], favorite: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.FONTS_SET_FAVORITES_BATCH, { fontIds, favorite }),
     delete: (fontId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.FONTS_DELETE, fontId),
   },
@@ -41,6 +43,10 @@ const api: FontStudioAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.COLLECTIONS_ADD_FONT, { fontId, collectionId }),
     removeFont: (fontId: string, collectionId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.COLLECTIONS_REMOVE_FONT, { fontId, collectionId }),
+    addFontsBatch: (fontIds: string[], collectionId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.COLLECTIONS_ADD_FONTS_BATCH, { fontIds, collectionId }),
+    removeFontsBatch: (fontIds: string[], collectionId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.COLLECTIONS_REMOVE_FONTS_BATCH, { fontIds, collectionId }),
   },
 
   tags: {
@@ -48,24 +54,34 @@ const api: FontStudioAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_ALL),
     create: (name: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_CREATE, name),
+    rename: (id: string, newName: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_RENAME, { id, newName }),
+    delete: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_DELETE, id),
     addToFont: (fontId: string, tagId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_ADD_TO_FONT, { fontId, tagId }),
     removeFromFont: (fontId: string, tagId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_FONT, { fontId, tagId }),
+    addBatch: (fontIds: string[], tagId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_ADD_BATCH, { fontIds, tagId }),
+    removeBatch: (fontIds: string[], tagId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_BATCH, { fontIds, tagId }),
   },
 
   install: {
-    installFonts: (fontIds: string[], scope: 'user' | 'system') =>
+    installFonts: (fontIds: string[], scope?: 'user' | 'system') =>
       ipcRenderer.invoke(IPC_CHANNELS.INSTALL_FONTS, { fontIds, scope }),
     uninstallFonts: (fontIds: string[]) =>
       ipcRenderer.invoke(IPC_CHANNELS.UNINSTALL_FONTS, { fontIds }),
     cancelTask: (taskId: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.INSTALL_CANCEL_TASK, taskId),
+      ipcRenderer.invoke(IPC_CHANNELS.INSTALL_CANCEL_TASK, { taskId }),
     onTaskProgress: (callback: (update: BatchTaskProgressUpdate) => void) => {
       const handler = (_event: IpcRendererEvent, data: BatchTaskProgressUpdate) => callback(data);
       ipcRenderer.on(IPC_CHANNELS.INSTALL_TASK_PROGRESS, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.INSTALL_TASK_PROGRESS, handler);
     },
+    getScopeStatus: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.INSTALL_GET_SCOPE_STATUS),
   },
 
   backup: {

@@ -18,27 +18,40 @@ export interface FontStudioAPI {
     cancelScan: () => Promise<void>;
     onScanProgress: (callback: (progress: ScanProgressUpdate) => void) => () => void;
     toggleFavorite: (fontId: string) => Promise<boolean>;
+    setFavoritesBatch: (fontIds: string[], favorite: boolean) => Promise<{ success: boolean; count: number }>;
     delete: (fontId: string) => Promise<void>;
   };
   collections: {
     getAll: () => Promise<CollectionRecord[]>;
     create: (name: string, description?: string) => Promise<CollectionRecord>;
-    rename: (id: string, newName: string) => Promise<void>;
-    delete: (id: string) => Promise<void>;
-    addFont: (fontId: string, collectionId: string) => Promise<void>;
-    removeFont: (fontId: string, collectionId: string) => Promise<void>;
+    rename: (id: string, newName: string) => Promise<{ success: boolean }>;
+    delete: (id: string) => Promise<{ success: boolean }>;
+    addFont: (fontId: string, collectionId: string) => Promise<{ success: boolean }>;
+    removeFont: (fontId: string, collectionId: string) => Promise<{ success: boolean }>;
+    addFontsBatch: (fontIds: string[], collectionId: string) => Promise<{ success: boolean; count: number }>;
+    removeFontsBatch: (fontIds: string[], collectionId: string) => Promise<{ success: boolean; count: number }>;
   };
   tags: {
     getAll: () => Promise<TagRecord[]>;
     create: (name: string) => Promise<TagRecord>;
-    addToFont: (fontId: string, tagId: string) => Promise<void>;
-    removeFromFont: (fontId: string, tagId: string) => Promise<void>;
+    rename: (id: string, newName: string) => Promise<{ success: boolean }>;
+    delete: (id: string) => Promise<{ success: boolean }>;
+    addToFont: (fontId: string, tagId: string) => Promise<{ success: boolean }>;
+    removeFromFont: (fontId: string, tagId: string) => Promise<{ success: boolean }>;
+    addBatch: (fontIds: string[], tagId: string) => Promise<{ success: boolean; count: number }>;
+    removeBatch: (fontIds: string[], tagId: string) => Promise<{ success: boolean; count: number }>;
   };
   install: {
-    installFonts: (fontIds: string[], scope: 'user' | 'system') => Promise<void>;
-    uninstallFonts: (fontIds: string[]) => Promise<void>;
-    cancelTask: (taskId: string) => Promise<void>;
+    installFonts: (fontIds: string[], scope?: 'user' | 'system') => Promise<BatchTaskProgressUpdate>;
+    uninstallFonts: (fontIds: string[]) => Promise<BatchTaskProgressUpdate>;
+    cancelTask: (taskId: string) => Promise<{ success: boolean }>;
     onTaskProgress: (callback: (update: BatchTaskProgressUpdate) => void) => () => void;
+    getScopeStatus: () => Promise<{
+      isElevated: boolean;
+      userFontsDir: string;
+      canInstallUserScope: boolean;
+      canInstallSystemScope: boolean;
+    }>;
   };
   backup: {
     create: (destinationZipPath: string, fontIds?: string[]) => Promise<{ success: boolean; error?: string }>;

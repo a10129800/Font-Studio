@@ -51,6 +51,28 @@ export function registerCollectionIpc(db: DatabaseService): void {
     return { success: true };
   });
 
+  ipcMain.handle(IPC_CHANNELS.COLLECTIONS_ADD_FONTS_BATCH, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+    const { fontIds, collectionId } = payload as { fontIds: string[]; collectionId: string };
+    if (!Array.isArray(fontIds) || fontIds.length === 0 || !collectionId || typeof collectionId !== 'string') {
+      throw new Error('Valid fontIds array and collectionId are required');
+    }
+    const cleanIds = fontIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    db.addFontsToCollection(cleanIds, collectionId.trim());
+    return { success: true, count: cleanIds.length };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.COLLECTIONS_REMOVE_FONTS_BATCH, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+    const { fontIds, collectionId } = payload as { fontIds: string[]; collectionId: string };
+    if (!Array.isArray(fontIds) || fontIds.length === 0 || !collectionId || typeof collectionId !== 'string') {
+      throw new Error('Valid fontIds array and collectionId are required');
+    }
+    const cleanIds = fontIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    db.removeFontsFromCollection(cleanIds, collectionId.trim());
+    return { success: true, count: cleanIds.length };
+  });
+
   // Tags
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_ALL, async () => {
     return db.getAllTags();
@@ -62,6 +84,22 @@ export function registerCollectionIpc(db: DatabaseService): void {
     return db.getOrCreateTag(id, name.trim());
   });
 
+  ipcMain.handle(IPC_CHANNELS.TAGS_RENAME, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+    const { id, newName } = payload as { id: string; newName: string };
+    if (!id || typeof id !== 'string' || !newName || typeof newName !== 'string' || !newName.trim()) {
+      throw new Error('Valid id and newName are required');
+    }
+    db.renameTag(id.trim(), newName.trim());
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TAGS_DELETE, async (_event, id: unknown) => {
+    if (typeof id !== 'string' || !id.trim()) throw new Error('Invalid tag id');
+    db.deleteTag(id.trim());
+    return { success: true };
+  });
+
   ipcMain.handle(IPC_CHANNELS.TAGS_ADD_TO_FONT, async (_event, payload: unknown) => {
     if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
     const { fontId, tagId } = payload as { fontId: string; tagId: string };
@@ -70,12 +108,34 @@ export function registerCollectionIpc(db: DatabaseService): void {
     return { success: true };
   });
 
+  ipcMain.handle(IPC_CHANNELS.TAGS_ADD_BATCH, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+    const { fontIds, tagId } = payload as { fontIds: string[]; tagId: string };
+    if (!Array.isArray(fontIds) || fontIds.length === 0 || !tagId || typeof tagId !== 'string') {
+      throw new Error('Valid fontIds array and tagId are required');
+    }
+    const cleanIds = fontIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    db.addTagToFonts(cleanIds, tagId.trim());
+    return { success: true, count: cleanIds.length };
+  });
+
   ipcMain.handle(IPC_CHANNELS.TAGS_REMOVE_FROM_FONT, async (_event, payload: unknown) => {
     if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
     const { fontId, tagId } = payload as { fontId: string; tagId: string };
     if (!fontId || !tagId) throw new Error('fontId and tagId are required');
     db.removeTagFromFont(fontId.trim(), tagId.trim());
     return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TAGS_REMOVE_BATCH, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+    const { fontIds, tagId } = payload as { fontIds: string[]; tagId: string };
+    if (!Array.isArray(fontIds) || fontIds.length === 0 || !tagId || typeof tagId !== 'string') {
+      throw new Error('Valid fontIds array and tagId are required');
+    }
+    const cleanIds = fontIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    db.removeTagFromFonts(cleanIds, tagId.trim());
+    return { success: true, count: cleanIds.length };
   });
 }
 

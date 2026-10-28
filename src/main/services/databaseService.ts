@@ -10,6 +10,7 @@ import {
   OperationLogEntry,
   FontFilterOptions,
   FontSourceType,
+  InstallScope,
 } from '../../shared/types';
 
 export class DatabaseService {
@@ -346,8 +347,12 @@ export class DatabaseService {
     }
 
     if (options.installScope && options.installScope !== 'all') {
-      whereSql += ' AND f.install_scope = ?';
-      params.push(options.installScope);
+      if (options.installScope === 'installed') {
+        whereSql += " AND f.install_scope IN ('system', 'user')";
+      } else {
+        whereSql += ' AND f.install_scope = ?';
+        params.push(options.installScope);
+      }
     }
 
     if (options.scanStatus && options.scanStatus !== 'all') {
@@ -454,6 +459,22 @@ export class DatabaseService {
     this.db.prepare('DELETE FROM fonts WHERE id = ?').run(id);
   }
 
+  public updateFontInstallScope(fontId: string, scope: InstallScope, newFilePath?: string): void {
+    if (newFilePath) {
+      this.db.prepare(`
+        UPDATE fonts
+        SET install_scope = ?, file_path = ?, last_scanned_at = datetime('now')
+        WHERE id = ?
+      `).run(scope, newFilePath, fontId);
+    } else {
+      this.db.prepare(`
+        UPDATE fonts
+        SET install_scope = ?, last_scanned_at = datetime('now')
+        WHERE id = ?
+      `).run(scope, fontId);
+    }
+  }
+
   // ==================== Collections ====================
 
   public createCollection(id: string, name: string, description: string = ''): CollectionRecord {
@@ -515,10 +536,35 @@ export class DatabaseService {
     `).run(fontId, collectionId);
   }
 
+  public addFontsToCollection(fontIds: string[], collectionId: string): void {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO font_collections (font_id, collection_id)
+      VALUES (?, ?)
+    `);
+    const tx = this.db.transaction((ids: string[]) => {
+      for (const id of ids) {
+        stmt.run(id, collectionId);
+      }
+    });
+    tx(fontIds);
+  }
+
   public removeFontFromCollection(fontId: string, collectionId: string): void {
     this.db.prepare(`
       DELETE FROM font_collections WHERE font_id = ? AND collection_id = ?
     `).run(fontId, collectionId);
+  }
+
+  public removeFontsFromCollection(fontIds: string[], collectionId: string): void {
+    const stmt = this.db.prepare(`
+      DELETE FROM font_collections WHERE font_id = ? AND collection_id = ?
+    `);
+    const tx = this.db.transaction((ids: string[]) => {
+      for (const id of ids) {
+        stmt.run(id, collectionId);
+      }
+    });
+    tx(fontIds);
   }
 
   public getFontCollectionIds(fontId: string): string[] {
@@ -538,6 +584,16 @@ export class DatabaseService {
     }
     this.db.prepare('INSERT INTO tags (id, name) VALUES (?, ?)').run(id, trimmed);
     return { id, name: trimmed };
+  }
+
+  public renameTag(id: string, newName: string): void {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error('Tag name cannot be empty');
+    this.db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(trimmed, id);
+  }
+
+  public deleteTag(id: string): void {
+    this.db.prepare('DELETE FROM tags WHERE id = ?').run(id);
   }
 
   public getAllTags(): TagRecord[] {
@@ -563,8 +619,31 @@ export class DatabaseService {
     `).run(fontId, tagId);
   }
 
+  public addTagToFonts(fontIds: string[], tagId: string): void {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO font_tags (font_id, tag_id)
+      VALUES (?, ?)
+    `);
+    const tx = this.db.transaction((ids: string[]) => {
+      for (const id of ids) {
+        stmt.run(id, tagId);
+      }
+    });
+    tx(fontIds);
+  }
+
   public removeTagFromFont(fontId: string, tagId: string): void {
     this.db.prepare('DELETE FROM font_tags WHERE font_id = ? AND tag_id = ?').run(fontId, tagId);
+  }
+
+  public removeTagFromFonts(fontIds: string[], tagId: string): void {
+    const stmt = this.db.prepare('DELETE FROM font_tags WHERE font_id = ? AND tag_id = ?');
+    const tx = this.db.transaction((ids: string[]) => {
+      for (const id of ids) {
+        stmt.run(id, tagId);
+      }
+    });
+    tx(fontIds);
   }
 
   public getFontTagNames(fontId: string): string[] {
@@ -574,6 +653,16 @@ export class DatabaseService {
       WHERE ft.font_id = ?
     `).all(fontId) as { name: string }[];
     return rows.map((r) => r.name);
+  }
+
+  public getFontTags(fontId: string): TagRecord[] {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.name FROM tags t
+      JOIN font_tags ft ON t.id = ft.tag_id
+      WHERE ft.font_id = ?
+      ORDER BY t.name ASC
+    `).all(fontId) as { id: string; name: string }[];
+    return rows;
   }
 
   // ==================== Favorites ====================
@@ -586,6 +675,22 @@ export class DatabaseService {
     } else {
       this.db.prepare("INSERT INTO favorites (font_id, created_at) VALUES (?, datetime('now'))").run(fontId);
       return true;
+    }
+  }
+
+  public setFavoritesBatch(fontIds: string[], favorite: boolean): void {
+    if (favorite) {
+      const stmt = this.db.prepare("INSERT OR IGNORE INTO favorites (font_id, created_at) VALUES (?, datetime('now'))");
+      const tx = this.db.transaction((ids: string[]) => {
+        for (const id of ids) stmt.run(id);
+      });
+      tx(fontIds);
+    } else {
+      const stmt = this.db.prepare('DELETE FROM favorites WHERE font_id = ?');
+      const tx = this.db.transaction((ids: string[]) => {
+        for (const id of ids) stmt.run(id);
+      });
+      tx(fontIds);
     }
   }
 

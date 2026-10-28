@@ -76,6 +76,18 @@ export function registerFontIpc(
     return db.toggleFavorite(fontId.trim());
   });
 
+  // Set favorites batch
+  ipcMain.handle(IPC_CHANNELS.FONTS_SET_FAVORITES_BATCH, async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+    const { fontIds, favorite } = payload as { fontIds: string[]; favorite: boolean };
+    if (!Array.isArray(fontIds) || fontIds.length === 0 || typeof favorite !== 'boolean') {
+      throw new Error('Valid fontIds array and favorite boolean are required');
+    }
+    const cleanIds = fontIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    db.setFavoritesBatch(cleanIds, favorite);
+    return { success: true, count: cleanIds.length };
+  });
+
   // Delete font from index
   ipcMain.handle(IPC_CHANNELS.FONTS_DELETE, async (_event, fontId: unknown) => {
     if (typeof fontId !== 'string' || !fontId.trim()) {

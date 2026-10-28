@@ -1,9 +1,12 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { DatabaseService } from '../services/databaseService';
 import { FontScannerService } from '../services/fontScannerService';
+import { FontInstallService } from '../services/fontInstallService';
+import { BatchJobQueue } from '../services/batchJobQueue';
 import { registerFontIpc } from './fontIpc';
 import { registerCollectionIpc } from './collectionIpc';
 import { registerDialogIpc } from './dialogIpc';
+import { registerInstallIpc } from './installIpc';
 import { IPC_CHANNELS } from '../../shared/channels';
 
 export function registerAllIpcHandlers(
@@ -11,9 +14,13 @@ export function registerAllIpcHandlers(
   scanner: FontScannerService,
   getMainWindow: () => BrowserWindow | null
 ): void {
+  const installService = new FontInstallService(db);
+  const batchQueue = new BatchJobQueue(db, installService);
+
   registerFontIpc(db, scanner, getMainWindow);
   registerCollectionIpc(db);
   registerDialogIpc(getMainWindow);
+  registerInstallIpc(db, installService, batchQueue, getMainWindow);
 
   // Storage Analysis handler
   ipcMain.handle(IPC_CHANNELS.STORAGE_GET_ANALYSIS, async () => {
@@ -79,18 +86,7 @@ export function registerAllIpcHandlers(
     };
   });
 
-  // Placeholder handlers for M2/M3 with clear status reporting
-  ipcMain.handle(IPC_CHANNELS.INSTALL_FONTS, async () => {
-    throw new Error('Font installation service is scheduled for Milestone M2');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.UNINSTALL_FONTS, async () => {
-    throw new Error('Font uninstallation service is scheduled for Milestone M2');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.INSTALL_CANCEL_TASK, async () => {
-    return { cancelled: true };
-  });
+  // Placeholder handlers for M3 with clear status reporting
 
   ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, async () => {
     throw new Error('Backup creation service is scheduled for Milestone M3');

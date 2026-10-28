@@ -3,6 +3,8 @@ import { Sidebar, NavTabId } from './components/Sidebar';
 import { Header } from './components/Header';
 import { StatusBar } from './components/StatusBar';
 import { FontDetailPanel } from './components/FontDetailPanel';
+import { BatchActionBar } from './components/BatchActionBar';
+import { BatchOperationModal } from './components/BatchOperationModal';
 import { OverviewView } from './components/views/OverviewView';
 import { FontGridView } from './components/views/FontGridView';
 import { CollectionsView } from './components/views/CollectionsView';
@@ -12,7 +14,14 @@ import { DuplicatesView } from './components/views/DuplicatesView';
 import { BackupView } from './components/views/BackupView';
 import { StorageAnalysisView } from './components/views/StorageAnalysisView';
 import { SettingsView } from './components/views/SettingsView';
-import { FontRecord, CollectionRecord, TagRecord, FontFormat, ScanProgressUpdate } from '../../shared/types';
+import {
+  FontRecord,
+  CollectionRecord,
+  TagRecord,
+  FontFormat,
+  ScanProgressUpdate,
+  BatchTaskProgressUpdate,
+} from '../../shared/types';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTabId>('overview');
@@ -48,9 +57,19 @@ export const App: React.FC = () => {
   const [selectedFontIds, setSelectedFontIds] = useState<Set<string>>(new Set());
   const [selectedFontForDetail, setSelectedFontForDetail] = useState<FontRecord | null>(null);
 
+  // Active collection or tag filter from navigation
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
+  const [activeTagId, setActiveTagId] = useState<string | null>(null);
+
   // Scanning & Operations
   const [scanProgress, setScanProgress] = useState<ScanProgressUpdate | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
+
+  // Batch Job Queue State
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchModalType, setBatchModalType] = useState<'install' | 'uninstall'>('install');
+  const [batchProgress, setBatchProgress] = useState<BatchTaskProgressUpdate | null>(null);
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
 
   const api = typeof window !== 'undefined' ? window.fontStudioAPI : undefined;
 
@@ -59,14 +78,13 @@ export const App: React.FC = () => {
     if (!api) return;
     try {
       const allRes = await api.fonts.getAll({ pageSize: 1 });
-      const installedRes = await api.fonts.getAll({ installScope: 'system', pageSize: 1 });
-      const userScopeRes = await api.fonts.getAll({ installScope: 'user', pageSize: 1 });
+      const installedRes = await api.fonts.getAll({ installScope: 'installed', pageSize: 1 });
       const localRes = await api.fonts.getAll({ sourceType: 'imported', pageSize: 1 });
       const favRes = await api.fonts.getAll({ isFavorite: true, pageSize: 1 });
 
       setFontCounts({
         total: allRes.total,
-        installed: installedRes.total + userScopeRes.total,
+        installed: installedRes.total,
         local: localRes.total,
         favorites: favRes.total,
       });
@@ -88,11 +106,18 @@ export const App: React.FC = () => {
       };
 
       if (activeTab === 'installed') {
-        filterOpts.installScope = 'system';
+        filterOpts.installScope = 'installed';
       } else if (activeTab === 'local') {
         filterOpts.sourceType = 'imported';
       } else if (activeTab === 'favorites') {
         filterOpts.isFavorite = true;
+      }
+
+      if (activeCollectionId) {
+        filterOpts.collectionId = activeCollectionId;
+      }
+      if (activeTagId) {
+        filterOpts.tagId = activeTagId;
       }
 
       const res = await api.fonts.getAll(filterOpts);
@@ -102,7 +127,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Failed to load fonts:', err);
     }
-  }, [api, searchQuery, formatFilter, sortBy, page, pageSize, activeTab]);
+  }, [api, searchQuery, formatFilter, sortBy, page, pageSize, activeTab, activeCollectionId, activeTagId]);
 
   // Load collections & tags
   const loadCollections = useCallback(async () => {
@@ -147,6 +172,28 @@ export const App: React.FC = () => {
       unsubscribe();
     };
   }, [api, loadFonts, loadCollections, loadCounts]);
+
+  // Subscribe to real batch install/uninstall task progress events
+  useEffect(() => {
+    if (!api) return;
+    const unsubscribe = api.install.onTaskProgress((progress: BatchTaskProgressUpdate) => {
+      setBatchProgress(progress);
+      if (progress.phase === 'completed' || progress.phase === 'error' || progress.phase === 'cancelled') {
+        setIsBatchRunning(false);
+        loadFonts();
+        loadCounts();
+        if (progress.phase === 'completed') {
+          setStatusMessage(`批次作業完成：成功 ${progress.successCount}，略過 ${progress.skippedCount}，失敗 ${progress.failedCount}`);
+        } else if (progress.phase === 'cancelled') {
+          setStatusMessage('批次作業已被中止');
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [api, loadFonts, loadCounts]);
 
   // Reset pagination on filter or tab change
   const handleSearchChange = (query: string) => {
@@ -273,6 +320,63 @@ export const App: React.FC = () => {
     await api.system.openPath(filePath);
   };
 
+  const handleBatchAddToCollection = async (collectionId: string) => {
+    if (!api || selectedFontIds.size === 0) return;
+    const res = await api.collections.addFontsBatch(Array.from(selectedFontIds), collectionId);
+    setStatusMessage(`已將 ${res.count} 個字體加入分類`);
+    await loadCollections();
+  };
+
+  const handleBatchAddTag = async (tagName: string) => {
+    if (!api || selectedFontIds.size === 0) return;
+    const tag = await api.tags.create(tagName);
+    const res = await api.tags.addBatch(Array.from(selectedFontIds), tag.id);
+    setStatusMessage(`已為 ${res.count} 個字體加上標籤 #${tagName}`);
+    await loadCollections();
+  };
+
+  const handleBatchFavorite = async (favorite: boolean) => {
+    if (!api || selectedFontIds.size === 0) return;
+    const res = await api.fonts.setFavoritesBatch(Array.from(selectedFontIds), favorite);
+    setStatusMessage(`已更新 ${res.count} 個字體的收藏狀態`);
+    await loadFonts();
+    await loadCounts();
+  };
+
+  const handleRenameTag = async (id: string, newName: string) => {
+    if (!api) return;
+    await api.tags.rename(id, newName);
+    await loadCollections();
+  };
+
+  const handleDeleteTag = async (id: string) => {
+    if (!api) return;
+    await api.tags.delete(id);
+    await loadCollections();
+  };
+
+  const handleConfirmBatchOperation = async () => {
+    if (!api || selectedFontIds.size === 0) return;
+    setIsBatchRunning(true);
+    try {
+      const ids = Array.from(selectedFontIds);
+      if (batchModalType === 'install') {
+        await api.install.installFonts(ids);
+      } else {
+        await api.install.uninstallFonts(ids);
+      }
+    } catch (err: any) {
+      console.error('Batch execution error:', err);
+      setIsBatchRunning(false);
+      setStatusMessage(`批次作業失敗: ${err.message}`);
+    }
+  };
+
+  const handleCancelBatchTask = async () => {
+    if (!api || !batchProgress?.taskId) return;
+    await api.install.cancelTask(batchProgress.taskId);
+  };
+
   const isScanning = Boolean(
     scanProgress && scanProgress.phase !== 'complete' && scanProgress.phase !== 'cancelled'
   );
@@ -359,7 +463,16 @@ export const App: React.FC = () => {
                 onRenameCollection={handleRenameCollection}
                 onDeleteCollection={handleDeleteCollection}
                 onCreateTag={handleCreateTag}
+                onRenameTag={handleRenameTag}
+                onDeleteTag={handleDeleteTag}
                 onSelectCollection={(colId) => {
+                  setActiveCollectionId(colId);
+                  setActiveTagId(null);
+                  setActiveTab('all-fonts');
+                }}
+                onSelectTag={(tagId) => {
+                  setActiveTagId(tagId);
+                  setActiveCollectionId(null);
                   setActiveTab('all-fonts');
                 }}
               />
@@ -414,6 +527,44 @@ export const App: React.FC = () => {
           </main>
         </div>
       </div>
+
+      {/* Floating Batch Action Bar */}
+      <BatchActionBar
+        selectedCount={selectedFontIds.size}
+        collections={collections}
+        tags={tags}
+        onAddToCollection={handleBatchAddToCollection}
+        onAddTag={handleBatchAddTag}
+        onBatchFavorite={handleBatchFavorite}
+        onOpenInstallModal={() => {
+          setBatchModalType('install');
+          setBatchProgress(null);
+          setIsBatchModalOpen(true);
+        }}
+        onOpenUninstallModal={() => {
+          setBatchModalType('uninstall');
+          setBatchProgress(null);
+          setIsBatchModalOpen(true);
+        }}
+        onClearSelection={() => setSelectedFontIds(new Set())}
+      />
+
+      {/* Batch Install / Uninstall Confirmation & Progress Modal */}
+      <BatchOperationModal
+        isOpen={isBatchModalOpen}
+        type={batchModalType}
+        selectedCount={selectedFontIds.size}
+        progress={batchProgress}
+        isRunning={isBatchRunning}
+        onConfirm={handleConfirmBatchOperation}
+        onCancelTask={handleCancelBatchTask}
+        onClose={() => {
+          setIsBatchModalOpen(false);
+          setBatchProgress(null);
+          setIsBatchRunning(false);
+          setSelectedFontIds(new Set());
+        }}
+      />
 
       {/* Bottom Status Bar */}
       <StatusBar

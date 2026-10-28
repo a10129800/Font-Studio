@@ -9,6 +9,7 @@ export const IPC_CHANNELS = {
   FONTS_CANCEL_SCAN: 'fonts:cancel-scan',
   FONTS_SCAN_PROGRESS: 'fonts:scan-progress',
   FONTS_TOGGLE_FAVORITE: 'fonts:toggle-favorite',
+  FONTS_SET_FAVORITES_BATCH: 'fonts:set-favorites-batch',
   FONTS_DELETE: 'fonts:delete',
 
   // Collections
@@ -18,18 +19,25 @@ export const IPC_CHANNELS = {
   COLLECTIONS_DELETE: 'collections:delete',
   COLLECTIONS_ADD_FONT: 'collections:add-font',
   COLLECTIONS_REMOVE_FONT: 'collections:remove-font',
+  COLLECTIONS_ADD_FONTS_BATCH: 'collections:add-fonts-batch',
+  COLLECTIONS_REMOVE_FONTS_BATCH: 'collections:remove-fonts-batch',
 
   // Tags
   TAGS_GET_ALL: 'tags:get-all',
   TAGS_CREATE: 'tags:create',
+  TAGS_RENAME: 'tags:rename',
+  TAGS_DELETE: 'tags:delete',
   TAGS_ADD_TO_FONT: 'tags:add-to-font',
   TAGS_REMOVE_FROM_FONT: 'tags:remove-from-font',
+  TAGS_ADD_BATCH: 'tags:add-batch',
+  TAGS_REMOVE_BATCH: 'tags:remove-batch',
 
   // Installation
   INSTALL_FONTS: 'install:fonts',
   UNINSTALL_FONTS: 'install:uninstall-fonts',
   INSTALL_TASK_PROGRESS: 'install:task-progress',
   INSTALL_CANCEL_TASK: 'install:cancel-task',
+  INSTALL_GET_SCOPE_STATUS: 'install:get-scope-status',
 
   // Backup & Restore
   BACKUP_CREATE: 'backup:create',

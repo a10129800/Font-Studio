@@ -10,7 +10,10 @@ interface CollectionsViewProps {
   onRenameCollection: (id: string, newName: string) => Promise<void>;
   onDeleteCollection: (id: string) => Promise<void>;
   onCreateTag: (name: string) => Promise<void>;
+  onRenameTag?: (id: string, newName: string) => Promise<void>;
+  onDeleteTag?: (id: string) => Promise<void>;
   onSelectCollection: (collectionId: string) => void;
+  onSelectTag?: (tagId: string) => void;
 }
 
 export const CollectionsView: React.FC<CollectionsViewProps> = ({
@@ -20,7 +23,10 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   onRenameCollection,
   onDeleteCollection,
   onCreateTag,
+  onRenameTag,
+  onDeleteTag,
   onSelectCollection,
+  onSelectTag,
 }) => {
   const [newColName, setNewColName] = useState('');
   const [newColDesc, setNewColDesc] = useState('');
@@ -28,6 +34,8 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   const [editingName, setEditingName] = useState('');
 
   const [newTagName, setNewTagName] = useState('');
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingTagName, setEditingTagName] = useState('');
 
   const handleCreateCollection = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,17 +216,78 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
           {/* Tag Cloud */}
           <div className="p-5 rounded-xl bg-studio-900 border border-studio-800 space-y-3">
             <h3 className="text-xs font-bold text-studio-400 uppercase tracking-wider">全部標籤 ({tags.length})</h3>
-            <div className="flex flex-wrap gap-2">
-              {tags.map((t) => (
-                <div
-                  key={t.id}
-                  className="px-2.5 py-1 rounded-md bg-studio-950 border border-studio-800 text-xs text-studio-300 flex items-center gap-1.5"
-                >
-                  <span>#{t.name}</span>
-                  <span className="text-[10px] text-studio-500 font-mono">({t.font_count || 0})</span>
-                </div>
-              ))}
-            </div>
+            {tags.length === 0 ? (
+              <div className="text-xs text-studio-500">尚未建立任何標籤。</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {tags.map((t) => (
+                  <div
+                    key={t.id}
+                    className="px-2.5 py-1 rounded-md bg-studio-950 border border-studio-800 text-xs text-studio-300 flex items-center gap-1.5 group hover:border-studio-700"
+                  >
+                    {editingTagId === t.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={editingTagName}
+                          onChange={(e) => setEditingTagName(e.target.value)}
+                          className="bg-studio-900 border border-brand-500 rounded px-1.5 py-0.5 text-xs text-white w-24"
+                          autoFocus
+                        />
+                        <button
+                          onClick={async () => {
+                            if (editingTagName.trim() && onRenameTag) {
+                              await onRenameTag(t.id, editingTagName.trim());
+                            }
+                            setEditingTagId(null);
+                          }}
+                          className="text-emerald-400 hover:text-emerald-300"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditingTagId(null)}
+                          className="text-studio-500 hover:text-white"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span
+                          onClick={() => onSelectTag?.(t.id)}
+                          className="cursor-pointer hover:text-brand-400 transition-colors"
+                        >
+                          #{t.name}
+                        </span>
+                        <span className="text-[10px] text-studio-500 font-mono">({t.font_count || 0})</span>
+                        {onRenameTag && (
+                          <button
+                            onClick={() => {
+                              setEditingTagId(t.id);
+                              setEditingTagName(t.name);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-studio-500 hover:text-studio-300 transition-opacity"
+                            title="重新命名標籤"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                        {onDeleteTag && (
+                          <button
+                            onClick={() => onDeleteTag(t.id)}
+                            className="opacity-0 group-hover:opacity-100 text-studio-500 hover:text-rose-400 transition-opacity"
+                            title="刪除標籤"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

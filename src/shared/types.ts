@@ -135,7 +135,7 @@ export interface FontFilterOptions {
   searchQuery?: string;
   format?: FontFormat | 'all';
   sourceType?: FontSourceType | 'all';
-  installScope?: InstallScope | 'all';
+  installScope?: InstallScope | 'installed' | 'all';
   isFavorite?: boolean;
   collectionId?: string;
   tagId?: string;
