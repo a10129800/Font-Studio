@@ -3,11 +3,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import {
   FontRecord,
+  FontQueryResult,
   CollectionRecord,
   TagRecord,
   OperationRecord,
   OperationLogEntry,
   FontFilterOptions,
+  FontSourceType,
 } from '../../shared/types';
 
 export class DatabaseService {
@@ -18,7 +20,6 @@ export class DatabaseService {
     if (customPath) {
       this.dbPath = customPath;
     } else {
-      // Default to user data directory for Font Studio
       const appData = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
       const dir = path.join(appData, 'FontStudio');
       if (!fs.existsSync(dir)) {
@@ -54,6 +55,9 @@ export class DatabaseService {
 
     if (currentVersion < 1) {
       this.applyMigration1();
+    }
+    if (currentVersion < 2) {
+      this.applyMigration2();
     }
   }
 
@@ -177,11 +181,51 @@ export class DatabaseService {
     migration();
   }
 
+  private applyMigration2(): void {
+    const migration = this.db.transaction(() => {
+      const tableInfo = this.db.prepare('PRAGMA table_info(fonts)').all() as { name: string }[];
+      const colNames = new Set(tableInfo.map((c) => c.name));
+
+      if (!colNames.has('localized_name')) {
+        this.db.exec('ALTER TABLE fonts ADD COLUMN localized_name TEXT;');
+      }
+      if (!colNames.has('full_name')) {
+        this.db.exec('ALTER TABLE fonts ADD COLUMN full_name TEXT;');
+      }
+      if (!colNames.has('face_index')) {
+        this.db.exec('ALTER TABLE fonts ADD COLUMN face_index INTEGER DEFAULT 0;');
+      }
+      if (!colNames.has('face_count')) {
+        this.db.exec('ALTER TABLE fonts ADD COLUMN face_count INTEGER DEFAULT 1;');
+      }
+      if (!colNames.has('is_missing')) {
+        this.db.exec('ALTER TABLE fonts ADD COLUMN is_missing INTEGER DEFAULT 0;');
+      }
+
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_fonts_localized ON fonts(localized_name);
+        CREATE INDEX IF NOT EXISTS idx_fonts_format ON fonts(format);
+        CREATE INDEX IF NOT EXISTS idx_fonts_missing ON fonts(is_missing);
+        INSERT INTO schema_migrations (version, applied_at) VALUES (2, datetime('now'));
+      `);
+    });
+
+    migration();
+  }
+
   // ==================== Font Operations ====================
 
   /**
-   * Finds an existing font by path and style, or by sha256 to preserve stable ID.
+   * Finds an existing font by path and face index, or by path and style.
    */
+  public findFontByPathAndFace(filePath: string, faceIndex: number): FontRecord | undefined {
+    const stmt = this.db.prepare(
+      'SELECT * FROM fonts WHERE file_path = ? AND face_index = ?'
+    );
+    const row = stmt.get(filePath, faceIndex) as any;
+    return row ? this.mapFontRow(row) : undefined;
+  }
+
   public findFontByPathAndStyle(filePath: string, styleName: string): FontRecord | undefined {
     const stmt = this.db.prepare(
       'SELECT * FROM fonts WHERE file_path = ? AND style_name = ?'
@@ -193,18 +237,20 @@ export class DatabaseService {
   public upsertFont(font: FontRecord): void {
     const stmt = this.db.prepare(`
       INSERT INTO fonts (
-        id, family_name, style_name, postscript_name, file_path, format,
-        file_size, sha256, source_type, install_scope, scan_status,
+        id, family_name, localized_name, full_name, style_name, postscript_name, file_path, format,
+        file_size, sha256, source_type, install_scope, scan_status, face_index, face_count, is_missing,
         version, designer, copyright, glyph_count, character_count,
         unicode_ranges, last_scanned_at, created_at
       ) VALUES (
-        @id, @family_name, @style_name, @postscript_name, @file_path, @format,
-        @file_size, @sha256, @source_type, @install_scope, @scan_status,
+        @id, @family_name, @localized_name, @full_name, @style_name, @postscript_name, @file_path, @format,
+        @file_size, @sha256, @source_type, @install_scope, @scan_status, @face_index, @face_count, @is_missing,
         @version, @designer, @copyright, @glyph_count, @character_count,
         @unicode_ranges, @last_scanned_at, @created_at
       )
       ON CONFLICT(id) DO UPDATE SET
         family_name = excluded.family_name,
+        localized_name = excluded.localized_name,
+        full_name = excluded.full_name,
         style_name = excluded.style_name,
         postscript_name = excluded.postscript_name,
         file_path = excluded.file_path,
@@ -214,6 +260,9 @@ export class DatabaseService {
         source_type = excluded.source_type,
         install_scope = excluded.install_scope,
         scan_status = excluded.scan_status,
+        face_index = excluded.face_index,
+        face_count = excluded.face_count,
+        is_missing = excluded.is_missing,
         version = excluded.version,
         designer = excluded.designer,
         copyright = excluded.copyright,
@@ -225,6 +274,11 @@ export class DatabaseService {
 
     stmt.run({
       ...font,
+      localized_name: font.localized_name ?? null,
+      full_name: font.full_name ?? null,
+      face_index: font.face_index ?? 0,
+      face_count: font.face_count ?? 1,
+      is_missing: font.is_missing ? 1 : 0,
       unicode_ranges: font.unicode_ranges ? JSON.stringify(font.unicode_ranges) : null,
       glyph_count: font.glyph_count ?? null,
       character_count: font.character_count ?? null,
@@ -261,66 +315,139 @@ export class DatabaseService {
     return font;
   }
 
-  public getFonts(options: FontFilterOptions = {}): FontRecord[] {
-    let sql = `
+  /**
+   * Queries fonts with pagination, filtering, search, and sorting.
+   */
+  public getFonts(options: FontFilterOptions = {}): FontQueryResult {
+    let whereSql = ' WHERE 1=1';
+    const params: any[] = [];
+
+    // Search query: checks English family name, localized name, full name, style, and PS name
+    if (options.searchQuery && options.searchQuery.trim()) {
+      whereSql += ` AND (
+        f.family_name LIKE ? OR
+        (f.localized_name IS NOT NULL AND f.localized_name LIKE ?) OR
+        (f.full_name IS NOT NULL AND f.full_name LIKE ?) OR
+        f.style_name LIKE ? OR
+        (f.postscript_name IS NOT NULL AND f.postscript_name LIKE ?)
+      )`;
+      const term = `%${options.searchQuery.trim()}%`;
+      params.push(term, term, term, term, term);
+    }
+
+    if (options.format && options.format !== 'all') {
+      whereSql += ' AND f.format = ?';
+      params.push(options.format);
+    }
+
+    if (options.sourceType && options.sourceType !== 'all') {
+      whereSql += ' AND f.source_type = ?';
+      params.push(options.sourceType);
+    }
+
+    if (options.installScope && options.installScope !== 'all') {
+      whereSql += ' AND f.install_scope = ?';
+      params.push(options.installScope);
+    }
+
+    if (options.scanStatus && options.scanStatus !== 'all') {
+      whereSql += ' AND f.scan_status = ?';
+      params.push(options.scanStatus);
+    }
+
+    if (options.isFavorite === true) {
+      whereSql += ' AND fav.font_id IS NOT NULL';
+    }
+
+    if (options.collectionId) {
+      whereSql += ' AND fc.collection_id = ?';
+      params.push(options.collectionId);
+    }
+
+    if (options.tagId) {
+      whereSql += ' AND ft.tag_id = ?';
+      params.push(options.tagId);
+    }
+
+    // 1. Get total count
+    const countSql = `
+      SELECT COUNT(DISTINCT f.id) AS total_count
+      FROM fonts f
+      LEFT JOIN favorites fav ON f.id = fav.font_id
+      LEFT JOIN font_collections fc ON f.id = fc.font_id
+      LEFT JOIN font_tags ft ON f.id = ft.font_id
+      ${whereSql}
+    `;
+    const countRow = this.db.prepare(countSql).get(...params) as { total_count: number };
+    const total = countRow?.total_count || 0;
+
+    // 2. Sorting
+    const allowedSort = ['family_name', 'localized_name', 'file_size', 'last_scanned_at', 'created_at', 'format'];
+    const sortCol = allowedSort.includes(options.sortBy || '') ? options.sortBy! : 'family_name';
+    const sortDir = (options.sortOrder || 'asc').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
+    // 3. Pagination
+    const page = Math.max(1, options.page || 1);
+    const pageSize = Math.max(1, Math.min(500, options.pageSize || 36));
+    const offset = (page - 1) * pageSize;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    const querySql = `
       SELECT DISTINCT f.*,
         CASE WHEN fav.font_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
       FROM fonts f
       LEFT JOIN favorites fav ON f.id = fav.font_id
       LEFT JOIN font_collections fc ON f.id = fc.font_id
       LEFT JOIN font_tags ft ON f.id = ft.font_id
-      WHERE 1=1
+      ${whereSql}
+      ORDER BY f.${sortCol} ${sortDir}, f.style_name ASC, f.face_index ASC
+      LIMIT ? OFFSET ?
     `;
+
+    const rows = this.db.prepare(querySql).all(...params, pageSize, offset) as any[];
+    const fontRecords = rows.map((r) => this.mapFontRow(r));
+
+    return {
+      fonts: fontRecords,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  }
+
+  /**
+   * Returns all matching fonts as a flat array without pagination limits.
+   */
+  public getAllFonts(options: FontFilterOptions = {}): FontRecord[] {
+    const res = this.getFonts({ ...options, page: 1, pageSize: 100000 });
+    return res.fonts;
+  }
+
+  /**
+   * Marks fonts whose files no longer exist on disk as missing.
+   */
+  public markMissingFonts(validPaths: Set<string>, sourceType?: FontSourceType): number {
+    let sql = 'SELECT id, file_path FROM fonts WHERE is_missing = 0';
     const params: any[] = [];
-
-    if (options.searchQuery && options.searchQuery.trim()) {
-      sql += ' AND (f.family_name LIKE ? OR f.style_name LIKE ? OR f.postscript_name LIKE ?)';
-      const term = `%${options.searchQuery.trim()}%`;
-      params.push(term, term, term);
+    if (sourceType) {
+      sql += ' AND source_type = ?';
+      params.push(sourceType);
     }
+    const rows = this.db.prepare(sql).all(...params) as { id: string; file_path: string }[];
+    let markedCount = 0;
+    const updateStmt = this.db.prepare("UPDATE fonts SET is_missing = 1, scan_status = 'unreadable' WHERE id = ?");
 
-    if (options.format && options.format !== 'all') {
-      sql += ' AND f.format = ?';
-      params.push(options.format);
-    }
-
-    if (options.sourceType && options.sourceType !== 'all') {
-      sql += ' AND f.source_type = ?';
-      params.push(options.sourceType);
-    }
-
-    if (options.installScope && options.installScope !== 'all') {
-      sql += ' AND f.install_scope = ?';
-      params.push(options.installScope);
-    }
-
-    if (options.scanStatus && options.scanStatus !== 'all') {
-      sql += ' AND f.scan_status = ?';
-      params.push(options.scanStatus);
-    }
-
-    if (options.isFavorite === true) {
-      sql += ' AND fav.font_id IS NOT NULL';
-    }
-
-    if (options.collectionId) {
-      sql += ' AND fc.collection_id = ?';
-      params.push(options.collectionId);
-    }
-
-    if (options.tagId) {
-      sql += ' AND ft.tag_id = ?';
-      params.push(options.tagId);
-    }
-
-    const sortCol = options.sortBy || 'family_name';
-    const sortDir = (options.sortOrder || 'asc').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-    sql += ` ORDER BY f.${sortCol} ${sortDir}, f.style_name ASC`;
-
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as any[];
-
-    return rows.map((r) => this.mapFontRow(r));
+    const tx = this.db.transaction(() => {
+      for (const row of rows) {
+        if (!validPaths.has(row.file_path) && !fs.existsSync(row.file_path)) {
+          updateStmt.run(row.id);
+          markedCount++;
+        }
+      }
+    });
+    tx();
+    return markedCount;
   }
 
   public deleteFont(id: string): void {
@@ -566,12 +693,13 @@ export class DatabaseService {
     const dupes = this.db.prepare(`
       SELECT sha256, COUNT(*) as count, file_size
       FROM fonts
+      WHERE is_missing = 0
       GROUP BY sha256
       HAVING count > 1
     `).all() as { sha256: string; count: number; file_size: number }[];
 
     return dupes.map((d) => {
-      const fonts = this.db.prepare('SELECT * FROM fonts WHERE sha256 = ?').all(d.sha256) as any[];
+      const fonts = this.db.prepare('SELECT * FROM fonts WHERE sha256 = ? AND is_missing = 0').all(d.sha256) as any[];
       return {
         sha256: d.sha256,
         count: d.count,
@@ -586,12 +714,13 @@ export class DatabaseService {
     const families = this.db.prepare(`
       SELECT family_name, COUNT(DISTINCT file_path) as path_count
       FROM fonts
+      WHERE is_missing = 0
       GROUP BY family_name
       HAVING path_count > 1
     `).all() as { family_name: string; path_count: number }[];
 
     return families.map((f) => {
-      const fonts = this.db.prepare('SELECT * FROM fonts WHERE family_name = ?').all(f.family_name) as any[];
+      const fonts = this.db.prepare('SELECT * FROM fonts WHERE family_name = ? AND is_missing = 0').all(f.family_name) as any[];
       return {
         family_name: f.family_name,
         fonts: fonts.map((r) => this.mapFontRow(r)),
@@ -629,6 +758,8 @@ export class DatabaseService {
     return {
       id: row.id,
       family_name: row.family_name,
+      localized_name: row.localized_name || undefined,
+      full_name: row.full_name || undefined,
       style_name: row.style_name,
       postscript_name: row.postscript_name || undefined,
       file_path: row.file_path,
@@ -638,6 +769,9 @@ export class DatabaseService {
       source_type: row.source_type,
       install_scope: row.install_scope,
       scan_status: row.scan_status,
+      face_index: row.face_index || 0,
+      face_count: row.face_count || 1,
+      is_missing: Boolean(row.is_missing),
       version: row.version || undefined,
       designer: row.designer || undefined,
       copyright: row.copyright || undefined,
@@ -650,4 +784,3 @@ export class DatabaseService {
     };
   }
 }
-

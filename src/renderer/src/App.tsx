@@ -20,6 +20,19 @@ export const App: React.FC = () => {
   const [collections, setCollections] = useState<CollectionRecord[]>([]);
   const [tags, setTags] = useState<TagRecord[]>([]);
 
+  // Pagination & Counts
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(36);
+  const [totalFonts, setTotalFonts] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [fontCounts, setFontCounts] = useState({
+    total: 0,
+    installed: 0,
+    local: 0,
+    favorites: 0,
+  });
+
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [formatFilter, setFormatFilter] = useState<FontFormat | 'all'>('all');
@@ -41,20 +54,55 @@ export const App: React.FC = () => {
 
   const api = typeof window !== 'undefined' ? window.fontStudioAPI : undefined;
 
-  // Load fonts from SQLite
+  // Load global counts for sidebar badges
+  const loadCounts = useCallback(async () => {
+    if (!api) return;
+    try {
+      const allRes = await api.fonts.getAll({ pageSize: 1 });
+      const installedRes = await api.fonts.getAll({ installScope: 'system', pageSize: 1 });
+      const userScopeRes = await api.fonts.getAll({ installScope: 'user', pageSize: 1 });
+      const localRes = await api.fonts.getAll({ sourceType: 'imported', pageSize: 1 });
+      const favRes = await api.fonts.getAll({ isFavorite: true, pageSize: 1 });
+
+      setFontCounts({
+        total: allRes.total,
+        installed: installedRes.total + userScopeRes.total,
+        local: localRes.total,
+        favorites: favRes.total,
+      });
+    } catch (err) {
+      console.error('Failed to load counts:', err);
+    }
+  }, [api]);
+
+  // Load fonts from SQLite with pagination
   const loadFonts = useCallback(async () => {
     if (!api) return;
     try {
-      const data = await api.fonts.getAll({
+      const filterOpts: any = {
         searchQuery,
         format: formatFilter,
-        sortBy: sortBy as any,
-      });
-      setFonts(data);
+        sortBy,
+        page,
+        pageSize,
+      };
+
+      if (activeTab === 'installed') {
+        filterOpts.installScope = 'system';
+      } else if (activeTab === 'local') {
+        filterOpts.sourceType = 'imported';
+      } else if (activeTab === 'favorites') {
+        filterOpts.isFavorite = true;
+      }
+
+      const res = await api.fonts.getAll(filterOpts);
+      setFonts(res.fonts);
+      setTotalFonts(res.total);
+      setTotalPages(res.totalPages);
     } catch (err) {
       console.error('Failed to load fonts:', err);
     }
-  }, [api, searchQuery, formatFilter, sortBy]);
+  }, [api, searchQuery, formatFilter, sortBy, page, pageSize, activeTab]);
 
   // Load collections & tags
   const loadCollections = useCallback(async () => {
@@ -71,8 +119,12 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadFonts();
+  }, [loadFonts]);
+
+  useEffect(() => {
     loadCollections();
-  }, [loadFonts, loadCollections]);
+    loadCounts();
+  }, [loadCollections, loadCounts]);
 
   // Subscribe to real scan progress events
   useEffect(() => {
@@ -82,9 +134,11 @@ export const App: React.FC = () => {
       if (progress.phase === 'complete') {
         loadFonts();
         loadCollections();
+        loadCounts();
         setStatusMessage(`掃描完成！新增或更新共 ${progress.successCount} 個字體`);
       } else if (progress.phase === 'cancelled') {
         loadFonts();
+        loadCounts();
         setStatusMessage('掃描已被使用者取消');
       }
     });
@@ -92,7 +146,29 @@ export const App: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [api, loadFonts, loadCollections]);
+  }, [api, loadFonts, loadCollections, loadCounts]);
+
+  // Reset pagination on filter or tab change
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    setPage(1);
+  };
+
+  const handleFormatChange = (format: FontFormat | 'all') => {
+    setFormatFilter(format);
+    setPage(1);
+  };
+
+  const handleSortChange = (newSort: string) => {
+    setSortBy(newSort);
+    setPage(1);
+  };
+
+  const handleTabChange = (newTab: NavTabId) => {
+    setActiveTab(newTab);
+    setSelectedFontForDetail(null);
+    setPage(1);
+  };
 
   // Actions
   const handleStartScan = async () => {
@@ -129,6 +205,7 @@ export const App: React.FC = () => {
     if (selectedFontForDetail?.id === fontId) {
       setSelectedFontForDetail((prev) => (prev ? { ...prev, is_favorite: newStatus } : null));
     }
+    loadCounts();
   };
 
   const handleToggleSelectFont = (fontId: string, selected: boolean) => {
@@ -136,6 +213,17 @@ export const App: React.FC = () => {
       const next = new Set(prev);
       if (selected) next.add(fontId);
       else next.delete(fontId);
+      return next;
+    });
+  };
+
+  const handleSelectAllPage = (select: boolean) => {
+    setSelectedFontIds((prev) => {
+      const next = new Set(prev);
+      for (const f of fonts) {
+        if (select) next.add(f.id);
+        else next.delete(f.id);
+      }
       return next;
     });
   };
@@ -185,29 +273,6 @@ export const App: React.FC = () => {
     await api.system.openPath(filePath);
   };
 
-  const fontCounts = useMemo(() => {
-    return {
-      total: fonts.length,
-      installed: fonts.filter((f) => f.install_scope === 'system' || f.install_scope === 'user').length,
-      local: fonts.filter((f) => f.source_type === 'imported').length,
-      favorites: fonts.filter((f) => f.is_favorite).length,
-    };
-  }, [fonts]);
-
-  // Filter fonts for current tab
-  const displayedFonts = useMemo(() => {
-    switch (activeTab) {
-      case 'installed':
-        return fonts.filter((f) => f.install_scope === 'system' || f.install_scope === 'user');
-      case 'local':
-        return fonts.filter((f) => f.source_type === 'imported');
-      case 'favorites':
-        return fonts.filter((f) => f.is_favorite);
-      default:
-        return fonts;
-    }
-  }, [activeTab, fonts]);
-
   const isScanning = Boolean(
     scanProgress && scanProgress.phase !== 'complete' && scanProgress.phase !== 'cancelled'
   );
@@ -218,10 +283,7 @@ export const App: React.FC = () => {
         {/* Left Navigation */}
         <Sidebar
           activeTab={activeTab}
-          onTabChange={(tab) => {
-            setActiveTab(tab);
-            setSelectedFontForDetail(null);
-          }}
+          onTabChange={handleTabChange}
           fontCounts={fontCounts}
         />
 
@@ -230,17 +292,17 @@ export const App: React.FC = () => {
           {/* Header Controls */}
           <Header
             searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            onSearchChange={handleSearchChange}
             previewText={previewText}
             onPreviewTextChange={setPreviewText}
             fontSize={fontSize}
             onFontSizeChange={setFontSize}
             formatFilter={formatFilter}
-            onFormatFilterChange={setFormatFilter}
+            onFormatFilterChange={handleFormatChange}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             sortBy={sortBy}
-            onSortByChange={setSortBy}
+            onSortByChange={handleSortChange}
             isScanning={isScanning}
             onStartScan={handleStartScan}
             onImportFolder={handleImportFolder}
@@ -253,7 +315,7 @@ export const App: React.FC = () => {
             {activeTab === 'overview' && (
               <OverviewView
                 fonts={fonts}
-                onNavigate={setActiveTab}
+                onNavigate={handleTabChange}
                 onStartScan={handleStartScan}
                 onImportFolder={handleImportFolder}
                 isScanning={isScanning}
@@ -262,15 +324,29 @@ export const App: React.FC = () => {
 
             {(activeTab === 'all-fonts' || activeTab === 'installed' || activeTab === 'local' || activeTab === 'favorites') && (
               <FontGridView
-                fonts={displayedFonts}
+                fonts={fonts}
+                total={totalFonts}
+                page={page}
+                pageSize={pageSize}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setPage(1);
+                }}
                 previewText={previewText}
                 fontSize={fontSize}
                 viewMode={viewMode}
                 selectedFontIds={selectedFontIds}
                 onToggleSelectFont={handleToggleSelectFont}
+                onSelectAllPage={handleSelectAllPage}
                 onToggleFavorite={handleToggleFavorite}
                 onSelectFontForDetail={setSelectedFontForDetail}
                 onScanFonts={handleStartScan}
+                searchQuery={searchQuery}
+                onClearSearch={() => handleSearchChange('')}
+                formatFilter={formatFilter}
+                onClearFormat={() => handleFormatChange('all')}
               />
             )}
 
@@ -344,11 +420,10 @@ export const App: React.FC = () => {
         scanProgress={scanProgress}
         onCancelScan={handleCancelScan}
         statusMessage={statusMessage}
-        totalFonts={fonts.length}
+        totalFonts={totalFonts}
       />
     </div>
   );
 };
 
 export default App;
-

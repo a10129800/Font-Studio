@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Heart, Check, AlertCircle } from 'lucide-react';
+import { Heart, AlertCircle, AlertTriangle } from 'lucide-react';
 import { FontRecord } from '../../../shared/types';
 
 interface FontCardProps {
@@ -25,29 +25,40 @@ export const FontCard: React.FC<FontCardProps> = ({
   const fontFamilyName = `FS_Font_${font.id}`;
 
   useEffect(() => {
-    if (font.scan_status !== 'valid') return;
+    if (font.scan_status !== 'valid' || font.is_missing) return;
 
-    // Dynamically load font face via privileged font-preview protocol
-    const fontUrl = `font-preview://font-file?path=${encodeURIComponent(font.file_path)}`;
-    const fontFace = new FontFace(fontFamilyName, `url("${fontUrl}")`);
-
+    // Load custom font-face via secure protocol
+    let fontFaceInstance: FontFace | null = null;
     let isMounted = true;
-    fontFace
-      .load()
-      .then((loaded) => {
-        if (isMounted) {
-          (document.fonts as any).add(loaded);
-          setFontLoaded(true);
-        }
-      })
-      .catch(() => {
-        // Fallback to generic font if preview fails
-      });
+
+    try {
+      const fontUrl = `font-preview://font-file?path=${encodeURIComponent(font.file_path)}`;
+      fontFaceInstance = new FontFace(fontFamilyName, `url("${fontUrl}")`);
+
+      fontFaceInstance
+        .load()
+        .then((loaded) => {
+          if (isMounted) {
+            (document.fonts as any).add(loaded);
+            setFontLoaded(true);
+          }
+        })
+        .catch(() => {
+          // Fallback to installed font or system fallback
+        });
+    } catch {
+      // Ignored
+    }
 
     return () => {
       isMounted = false;
+      if (fontFaceInstance && (document.fonts as any).has(fontFaceInstance)) {
+        try {
+          (document.fonts as any).delete(fontFaceInstance);
+        } catch {}
+      }
     };
-  }, [font.id, font.file_path, font.scan_status]);
+  }, [font.id, font.file_path, font.scan_status, font.is_missing, fontFamilyName]);
 
   const defaultSample = previewText.trim() || 'ABCDEF abcdef 123456 永和九年歲在癸丑';
 
@@ -60,7 +71,12 @@ export const FontCard: React.FC<FontCardProps> = ({
     unknown: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
   };
 
-  const isCorrupted = font.scan_status === 'corrupted' || font.scan_status === 'unsupported';
+  const isCorrupted = font.scan_status === 'corrupted' || font.scan_status === 'unsupported' || font.scan_status === 'unreadable';
+
+  // CSS Font family fallback list prioritizing loaded custom font, then native family name, localized name
+  const appliedFontFamily = fontLoaded
+    ? `"${fontFamilyName}", "${font.family_name}", "${font.localized_name || ''}", sans-serif`
+    : `"${font.family_name}", "${font.localized_name || ''}", sans-serif`;
 
   return (
     <div
@@ -71,7 +87,7 @@ export const FontCard: React.FC<FontCardProps> = ({
           : 'border-studio-800 hover:border-studio-700 hover:bg-studio-850 shadow-sm'
       }`}
     >
-      {/* Top Bar: Family, Style, Badges & Favorite */}
+      {/* Top Bar: Family, Localized name, Style, Badges & Favorite */}
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-start gap-2.5 overflow-hidden">
           <input
@@ -86,13 +102,18 @@ export const FontCard: React.FC<FontCardProps> = ({
           />
           <div className="overflow-hidden">
             <h3 className="font-semibold text-sm text-white truncate group-hover:text-brand-400 transition-colors">
-              {font.family_name}
+              {font.localized_name ? `${font.localized_name} (${font.family_name})` : font.family_name}
             </h3>
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-[11px] text-studio-400 font-medium">{font.style_name}</span>
               <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border font-mono ${formatColors[font.format] || formatColors.unknown}`}>
                 {font.format}
               </span>
+              {font.face_count > 1 && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono">
+                  面 {font.face_index + 1}/{font.face_count}
+                </span>
+              )}
               {font.install_scope === 'system' && (
                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
                   系統
@@ -101,6 +122,11 @@ export const FontCard: React.FC<FontCardProps> = ({
               {font.install_scope === 'user' && (
                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
                   使用者
+                </span>
+              )}
+              {font.is_missing && (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium flex items-center gap-0.5">
+                  <AlertTriangle className="w-2.5 h-2.5" /> 檔案離線
                 </span>
               )}
             </div>
@@ -132,7 +158,7 @@ export const FontCard: React.FC<FontCardProps> = ({
         ) : (
           <p
             style={{
-              fontFamily: fontLoaded ? `"${fontFamilyName}", sans-serif` : 'sans-serif',
+              fontFamily: appliedFontFamily,
               fontSize: `${fontSize}px`,
               lineHeight: 1.25,
             }}
@@ -153,4 +179,3 @@ export const FontCard: React.FC<FontCardProps> = ({
     </div>
   );
 };
-

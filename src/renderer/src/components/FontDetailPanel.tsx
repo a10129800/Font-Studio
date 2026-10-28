@@ -63,10 +63,15 @@ export const FontDetailPanel: React.FC<FontDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-5 space-y-6">
         {/* Title & Style */}
         <div>
-          <h3 className="text-lg font-bold text-white tracking-tight">{font.family_name}</h3>
+          <h3 className="text-lg font-bold text-white tracking-tight">
+            {font.localized_name ? `${font.localized_name} (${font.family_name})` : font.family_name}
+          </h3>
           <p className="text-xs text-brand-400 font-medium mt-0.5">{font.style_name}</p>
+          {font.full_name && font.full_name !== font.family_name && (
+            <p className="text-xs text-studio-300 mt-1">全名: {font.full_name}</p>
+          )}
           {font.postscript_name && (
-            <p className="text-[11px] text-studio-400 font-mono mt-1">PS: {font.postscript_name}</p>
+            <p className="text-[11px] text-studio-400 font-mono mt-0.5">PS: {font.postscript_name}</p>
           )}
         </div>
 
@@ -75,6 +80,11 @@ export const FontDetailPanel: React.FC<FontDetailPanelProps> = ({
           <div className="px-2.5 py-1 rounded bg-studio-800 border border-studio-700 text-studio-300 font-mono text-[11px] uppercase">
             {font.format}
           </div>
+          {font.face_count > 1 && (
+            <div className="px-2.5 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[11px] font-mono">
+              TrueType Collection (第 {font.face_index + 1} 面 / 共 {font.face_count} 面)
+            </div>
+          )}
           <div className={`px-2.5 py-1 rounded text-[11px] font-medium border ${
             font.install_scope === 'system'
               ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
@@ -84,10 +94,16 @@ export const FontDetailPanel: React.FC<FontDetailPanelProps> = ({
           }`}>
             {font.install_scope === 'system' ? 'Windows 系統安裝' : font.install_scope === 'user' ? '目前使用者安裝' : '未安裝至系統'}
           </div>
-          {font.scan_status !== 'valid' && (
+          {font.is_missing && (
+            <div className="px-2.5 py-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[11px] font-medium flex items-center gap-1">
+              <ShieldAlert className="w-3 h-3" />
+              <span>實體檔案離線 / 已移除</span>
+            </div>
+          )}
+          {font.scan_status !== 'valid' && !font.is_missing && (
             <div className="px-2.5 py-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[11px] font-medium flex items-center gap-1">
               <ShieldAlert className="w-3 h-3" />
-              <span>狀態: {font.scan_status}</span>
+              <span>解析狀態: {font.scan_status}</span>
             </div>
           )}
         </div>

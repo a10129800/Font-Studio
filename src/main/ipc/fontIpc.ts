@@ -25,6 +25,8 @@ export function registerFontIpc(
       if (typeof opt.tagId === 'string') safeOptions.tagId = opt.tagId;
       if (typeof opt.sortBy === 'string') safeOptions.sortBy = opt.sortBy as any;
       if (typeof opt.sortOrder === 'string') safeOptions.sortOrder = opt.sortOrder === 'desc' ? 'desc' : 'asc';
+      if (typeof opt.page === 'number' && Number.isFinite(opt.page)) safeOptions.page = opt.page;
+      if (typeof opt.pageSize === 'number' && Number.isFinite(opt.pageSize)) safeOptions.pageSize = opt.pageSize;
     }
     return db.getFonts(safeOptions);
   });

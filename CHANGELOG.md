@@ -18,3 +18,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Font scanner service for Windows system fonts (`C:\Windows\Fonts`) and user fonts (`%LOCALAPPDATA%\Microsoft\Windows\Fonts`).
   - Professional design software UI with 12 navigation sections, dark/light theme, specimen cards, and live progress status bar.
   - Comprehensive unit test suite with 17 Vitest tests covering SQLite, hashing, path validation, parsing, and scanner cancellation.
+

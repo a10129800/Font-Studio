@@ -55,7 +55,7 @@ describe('FontScannerService', () => {
     expect(progressUpdates[progressUpdates.length - 1].phase).toBe('complete');
 
     // Font in DB should have status corrupted
-    const fonts = dbService.getFonts();
+    const fonts = dbService.getAllFonts();
     expect(fonts.length).toBe(1);
     expect(fonts[0].scan_status).toBe('corrupted');
   });

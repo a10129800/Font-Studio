@@ -5,6 +5,7 @@ declare module 'fontkit' {
     postscriptName?: string;
     version?: string;
     copyright?: string;
+    designer?: string;
     numGlyphs: number;
     characterSet: number[];
     glyphForCodePoint(codePoint: number): any;

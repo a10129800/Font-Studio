@@ -24,8 +24,9 @@ describe('DatabaseService', () => {
   });
 
   it('initializes schema and runs migrations properly', () => {
-    const fonts = dbService.getFonts();
-    expect(fonts).toEqual([]);
+    const fontsResult = dbService.getFonts();
+    expect(fontsResult.fonts).toEqual([]);
+    expect(fontsResult.total).toBe(0);
     const collections = dbService.getAllCollections();
     expect(collections).toEqual([]);
   });
@@ -34,6 +35,8 @@ describe('DatabaseService', () => {
     const font: FontRecord = {
       id: 'f1-test-uuid',
       family_name: 'Test Sans',
+      localized_name: '測試黑體',
+      full_name: 'Test Sans Bold (測試黑體)',
       style_name: 'Bold',
       postscript_name: 'TestSans-Bold',
       file_path: 'C:\\Fonts\\testsans-bold.ttf',
@@ -43,6 +46,9 @@ describe('DatabaseService', () => {
       source_type: 'imported',
       install_scope: 'uninstalled',
       scan_status: 'valid',
+      face_index: 0,
+      face_count: 1,
+      is_missing: false,
       version: '1.0.0',
       designer: 'Jane Doe',
       copyright: 'Copyright 2026',
@@ -57,6 +63,7 @@ describe('DatabaseService', () => {
     const retrieved = dbService.getFontById('f1-test-uuid');
     expect(retrieved).toBeDefined();
     expect(retrieved?.family_name).toBe('Test Sans');
+    expect(retrieved?.localized_name).toBe('測試黑體');
     expect(retrieved?.style_name).toBe('Bold');
     expect(retrieved?.unicode_ranges).toEqual(['Basic Latin', 'Latin-1 Supplement']);
     expect(retrieved?.is_favorite).toBe(false);
@@ -74,6 +81,9 @@ describe('DatabaseService', () => {
       source_type: 'user',
       install_scope: 'user',
       scan_status: 'valid',
+      face_index: 0,
+      face_count: 1,
+      is_missing: false,
       last_scanned_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
@@ -113,6 +123,9 @@ describe('DatabaseService', () => {
       source_type: 'user',
       install_scope: 'user',
       scan_status: 'valid',
+      face_index: 0,
+      face_count: 1,
+      is_missing: false,
       last_scanned_at: '2026-01-01T00:00:00.000Z',
       created_at: '2026-01-01T00:00:00.000Z',
     };
@@ -130,6 +143,46 @@ describe('DatabaseService', () => {
     const reloaded = dbService.getFontById('stable-id-123');
     expect(reloaded?.file_size).toBe(50100);
     expect(reloaded?.is_favorite).toBe(true);
+  });
+
+  it('supports pagination, sorting, and localized Chinese search', () => {
+    // Insert 5 fonts
+    for (let i = 1; i <= 5; i++) {
+      dbService.upsertFont({
+        id: `font-${i}`,
+        family_name: `Alphabet ${i}`,
+        localized_name: i === 3 ? '蘭亭黑體' : undefined,
+        style_name: 'Regular',
+        file_path: `C:\\Fonts\\font${i}.ttf`,
+        format: 'ttf',
+        file_size: i * 10000,
+        sha256: `hash-${i}`,
+        source_type: 'system',
+        install_scope: 'system',
+        scan_status: 'valid',
+        face_index: 0,
+        face_count: 1,
+        is_missing: false,
+        last_scanned_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    // 1. Pagination: page 1 with pageSize 2
+    const page1 = dbService.getFonts({ page: 1, pageSize: 2 });
+    expect(page1.total).toBe(5);
+    expect(page1.totalPages).toBe(3);
+    expect(page1.fonts).toHaveLength(2);
+    expect(page1.fonts[0].family_name).toBe('Alphabet 1');
+
+    // 2. Localized Chinese search
+    const searchRes = dbService.getFonts({ searchQuery: '蘭亭' });
+    expect(searchRes.total).toBe(1);
+    expect(searchRes.fonts[0].id).toBe('font-3');
+
+    // 3. Sorting by file_size descending
+    const sortedRes = dbService.getFonts({ sortBy: 'file_size', sortOrder: 'desc' });
+    expect(sortedRes.fonts[0].file_size).toBe(50000);
   });
 });
 

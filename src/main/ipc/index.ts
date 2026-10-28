@@ -17,7 +17,7 @@ export function registerAllIpcHandlers(
 
   // Storage Analysis handler
   ipcMain.handle(IPC_CHANNELS.STORAGE_GET_ANALYSIS, async () => {
-    const fonts = db.getFonts();
+    const fonts = db.getAllFonts();
     const exactDupes = db.getExactDuplicates();
     const familyDupes = db.getPotentialFamilyDuplicates();
 

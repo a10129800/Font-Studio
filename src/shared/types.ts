@@ -10,6 +10,8 @@ export type ScanStatus = 'valid' | 'corrupted' | 'unsupported' | 'unreadable';
 export interface FontRecord {
   id: string;
   family_name: string;
+  localized_name?: string;
+  full_name?: string;
   style_name: string;
   postscript_name?: string;
   file_path: string;
@@ -19,6 +21,9 @@ export interface FontRecord {
   source_type: FontSourceType;
   install_scope: InstallScope;
   scan_status: ScanStatus;
+  face_index: number;
+  face_count: number;
+  is_missing: boolean;
   version?: string;
   designer?: string;
   copyright?: string;
@@ -30,6 +35,14 @@ export interface FontRecord {
   is_favorite?: boolean;
   collection_ids?: string[];
   tags?: string[];
+}
+
+export interface FontQueryResult {
+  fonts: FontRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface CollectionRecord {
@@ -127,8 +140,10 @@ export interface FontFilterOptions {
   collectionId?: string;
   tagId?: string;
   scanStatus?: ScanStatus | 'all';
-  sortBy?: 'family_name' | 'file_size' | 'last_scanned_at' | 'created_at';
+  sortBy?: 'family_name' | 'localized_name' | 'file_size' | 'last_scanned_at' | 'created_at' | 'format';
   sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
 }
 
 export interface StorageAnalysisReport {
@@ -163,4 +178,3 @@ export interface LanguageCoverage {
   percentage: number;
   missingChars: string[];
 }
-

@@ -1,5 +1,6 @@
 import {
   FontRecord,
+  FontQueryResult,
   CollectionRecord,
   TagRecord,
   FontFilterOptions,
@@ -11,7 +12,7 @@ import {
 
 export interface FontStudioAPI {
   fonts: {
-    getAll: (options?: FontFilterOptions) => Promise<FontRecord[]>;
+    getAll: (options?: FontFilterOptions) => Promise<FontQueryResult>;
     getById: (id: string) => Promise<FontRecord | undefined>;
     startScan: (customPaths?: string[]) => Promise<void>;
     cancelScan: () => Promise<void>;

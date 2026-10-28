@@ -61,7 +61,7 @@ export class FontScannerService {
       phase: 'discovering',
       total: 0,
       current: 0,
-      currentFile: 'Discovering font files...',
+      currentFile: '正在搜尋字體檔案...',
       successCount: 0,
       failedCount: 0,
       skippedCount: 0,
@@ -87,16 +87,22 @@ export class FontScannerService {
     let skippedCount = 0;
 
     // 2. Parse and index each file
-    const batchSize = 20;
+    const batchSize = 25;
     const parsedBatch: FontRecord[] = [];
 
     for (let i = 0; i < total; i++) {
       if (this.isCancelled) {
+        // Flush remaining before exiting
+        if (parsedBatch.length > 0) {
+          this.db.upsertFontsBatch(parsedBatch);
+          parsedBatch.length = 0;
+        }
+
         onProgress?.({
           phase: 'cancelled',
           total,
           current: i,
-          currentFile: 'Scan cancelled by user',
+          currentFile: '使用者已取消掃描',
           successCount,
           failedCount,
           skippedCount,
@@ -120,14 +126,17 @@ export class FontScannerService {
         const fontRecords = await this.parser.parseFontFile(filePath, source);
 
         for (const font of fontRecords) {
-          // Check if this font already exists to preserve stable ID & user collections/favorites
-          const existing = this.db.findFontByPathAndStyle(font.file_path, font.style_name);
+          // Check if this font face already exists to preserve stable ID & user collections/favorites
+          const existing =
+            this.db.findFontByPathAndFace(font.file_path, font.face_index) ||
+            this.db.findFontByPathAndStyle(font.file_path, font.style_name);
+
           if (existing) {
             font.id = existing.id;
             font.created_at = existing.created_at;
           }
 
-          if (font.scan_status === 'corrupted' || font.scan_status === 'unsupported') {
+          if (font.scan_status === 'corrupted' || font.scan_status === 'unsupported' || font.scan_status === 'unreadable') {
             failedCount++;
           } else {
             successCount++;
@@ -136,7 +145,7 @@ export class FontScannerService {
           parsedBatch.push(font);
         }
 
-        // Flush batch to SQLite periodically
+        // Flush batch to SQLite periodically inside single transactions
         if (parsedBatch.length >= batchSize || i === total - 1) {
           this.db.upsertFontsBatch(parsedBatch);
           parsedBatch.length = 0;
@@ -147,11 +156,17 @@ export class FontScannerService {
       }
     }
 
+    // 3. Mark missing files in scanned scopes
+    const discoveredPaths = new Set(fileEntries.map((e) => e.filePath));
+    for (const dir of dirsToScan) {
+      this.db.markMissingFonts(discoveredPaths, dir.source);
+    }
+
     onProgress?.({
       phase: 'complete',
       total,
       current: total,
-      currentFile: 'Scan completed successfully',
+      currentFile: '掃描完成！',
       successCount,
       failedCount,
       skippedCount,
@@ -167,14 +182,14 @@ export class FontScannerService {
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        // Only recurse into subdirectories if not Windows Fonts (system fonts dir has no subdirs)
         const lowerName = entry.name.toLowerCase();
-        if (lowerName !== '$recycle.bin' && lowerName !== 'system volume information') {
+        // Skip system/hidden metadata dirs
+        if (lowerName !== '$recycle.bin' && lowerName !== 'system volume information' && !lowerName.startsWith('.')) {
           try {
             const subFiles = await this.collectFilesRecursively(fullPath, supportedExts);
             results.push(...subFiles);
           } catch {
-            // Ignore permission issues in subfolders
+            // Gracefully ignore folders without read permissions
           }
         }
       } else if (entry.isFile()) {
@@ -188,4 +203,3 @@ export class FontScannerService {
     return results;
   }
 }
-
