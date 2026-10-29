@@ -32,9 +32,11 @@ export function isValidDirectoryPath(dirPath: string): boolean {
   }
 }
 
+const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..+)?$/i;
+
 /**
  * Prevents Zip Slip vulnerability by ensuring target path stays strictly inside destination directory.
- * Disallows absolute paths, drive letters, UNC roots, leading slashes, and traversal segments ('..').
+ * Disallows absolute paths, drive letters, UNC roots, leading slashes, reserved device names, and traversal segments ('..').
  */
 export function isSafeArchivePath(destinationDir: string, relativePath: string): boolean {
   if (!destinationDir || !relativePath || typeof relativePath !== 'string') return false;
@@ -45,19 +47,18 @@ export function isSafeArchivePath(destinationDir: string, relativePath: string):
   // Reject absolute paths, Windows drive specifiers, or UNC paths
   if (path.isAbsolute(relativePath) || path.win32.isAbsolute(relativePath)) return false;
   if (/^[a-zA-Z]:/.test(relativePath)) return false;
-  if (normalized.startsWith('/') || normalized.startsWith('//')) return false;
+  if (normalized.startsWith('/') || normalized.startsWith('//') || relativePath.startsWith('\\\\')) return false;
 
-  // Check for traversal segments
+  // Check for traversal segments and reserved Windows device names
   const segments = normalized.split('/');
   if (segments.some((seg) => seg === '..')) return false;
+  if (segments.some((seg) => WINDOWS_RESERVED_NAMES.test(seg))) return false;
 
   const destResolved = path.resolve(destinationDir);
   const targetResolved = path.resolve(destinationDir, relativePath);
 
   return targetResolved.startsWith(destResolved + path.sep) || targetResolved === destResolved;
 }
-
-const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..+)?$/i;
 
 /**
  * Sanitizes a filename for Windows filesystem safety:

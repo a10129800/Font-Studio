@@ -232,6 +232,63 @@ describe('Milestone M3.1: Windows Safety, Integrity Verification & E2E Acceptanc
       expect(verification.valid).toBe(false);
       expect(verification.issues.some((issue) => issue.includes('缺少安全校驗碼'))).toBe(true);
     });
+
+    it('M3.1-15: rejects case-insensitive duplicate paths in manifest (e.g. fonts/test.ttf vs fonts/TEST.TTF)', async () => {
+      const f1Path = createTestFontFile('CaseFont.ttf', 'CASE_BYTES');
+      seedFont({
+        id: 'font-case-1',
+        family_name: 'CaseFont',
+        style_name: 'Regular',
+        file_path: f1Path,
+      });
+
+      const backupZip = path.join(tempDir, 'case_collision.zip');
+      await backupService.createBackup(backupZip, { includeAll: true });
+
+      const zip = new AdmZip(backupZip);
+      const manifest: BackupManifest = JSON.parse(zip.getEntry('manifest.json')!.getData().toString('utf-8'));
+      const originalItem = manifest.files[0];
+      // Add a case-varying item pointing to same path in upper case
+      manifest.files.push({
+        ...originalItem,
+        font_id: 'font-case-2',
+        archive_path: originalItem.archive_path.toUpperCase(),
+      });
+      const { checksum, manifestSha256, ...withoutChecksum } = manifest;
+      const recomputed = calculateSha256(JSON.stringify(withoutChecksum, null, 2));
+      manifest.checksum = recomputed;
+      manifest.manifestSha256 = recomputed;
+
+      zip.deleteFile('manifest.json');
+      zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
+      zip.writeZip(backupZip);
+
+      const verification = await backupService.verifyBackupZip(backupZip);
+      expect(verification.valid).toBe(false);
+      expect(verification.issues.some((issue) => issue.includes('大小寫衝突') || issue.includes('重複'))).toBe(true);
+    });
+
+    it('M3.1-16: rejects ZIP entries containing Windows reserved device names in path segments', async () => {
+      const f1Path = createTestFontFile('DeviceFont.ttf', 'DEV_BYTES');
+      seedFont({
+        id: 'font-dev-1',
+        family_name: 'DeviceFont',
+        style_name: 'Regular',
+        file_path: f1Path,
+      });
+
+      const backupZip = path.join(tempDir, 'device_reserved.zip');
+      await backupService.createBackup(backupZip, { includeAll: true });
+
+      const zip = new AdmZip(backupZip);
+      // Inject reserved device entry e.g. fonts/CON/font.ttf
+      zip.addFile('fonts/CON/evil.ttf', Buffer.from('RESERVED_DEVICE_BYTES'));
+      zip.writeZip(backupZip);
+
+      const verification = await backupService.verifyBackupZip(backupZip);
+      expect(verification.valid).toBe(false);
+      expect(verification.issues.some((issue) => issue.includes('Zip Slip') || issue.includes('路徑穿越'))).toBe(true);
+    });
   });
 
   // ==================== C. Restoration & Conflict Resolution ====================
@@ -419,6 +476,40 @@ describe('Milestone M3.1: Windows Safety, Integrity Verification & E2E Acceptanc
       expect(res.favorites).toBe(0);
       const fontsInCol = dbService.getFonts({ collectionId: col.id });
       expect(fontsInCol.total).toBe(0);
+    });
+
+    it('M3.1-17: database import transaction rolls back completely on SQLite fatal constraint error', () => {
+      const initialCollectionsCount = dbService.getAllCollections().length;
+
+      // Manifest containing a valid collection followed by a failing element that throws midway
+      const manifest: any = {
+        manifest_version: '1.0.0',
+        app_version: '0.1.0',
+        created_at: new Date().toISOString(),
+        font_count: 0,
+        files: [],
+        collections: [
+          { id: 'col-valid-1', name: 'WillBeRolledBack', description: 'Test', font_count: 0, created_at: new Date().toISOString() },
+        ],
+        tags: [
+          {
+            get id(): string {
+              throw new Error('Mid-transaction simulated hardware/DB failure');
+            },
+            name: 'CrashTag',
+          },
+        ],
+        checksum: 'dummy',
+      };
+
+      expect(() => {
+        dbService.importBackupMetadata(manifest, { importCollections: true, importTags: true });
+      }).toThrow('Mid-transaction simulated hardware/DB failure');
+
+      // Verify transaction rollback: the first collection must NOT be committed
+      const afterCollections = dbService.getAllCollections();
+      expect(afterCollections.length).toBe(initialCollectionsCount);
+      expect(afterCollections.some((c) => c.name === 'WillBeRolledBack')).toBe(false);
     });
   });
 

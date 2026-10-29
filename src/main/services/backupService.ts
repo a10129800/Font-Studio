@@ -350,11 +350,18 @@ export class BackupService {
     const dangerousExtensions = ['.exe', '.dll', '.bat', '.cmd', '.vbs', '.scr', '.ps1', '.msi', '.com', '.pif'];
 
     for (const entry of zipEntries) {
-      // Check entry name duplicates inside ZIP
-      if (seenEntryNames.has(entry.entryName)) {
-        issues.push(`ZIP 檔案內存在重複的檔案路徑條目: ${entry.entryName}`);
+      // Check entry name duplicates inside ZIP (case-insensitive for Windows safety)
+      const normalizedEntryKey = entry.entryName.toLowerCase();
+      if (seenEntryNames.has(normalizedEntryKey)) {
+        issues.push(`ZIP 檔案內存在重複或大小寫衝突的檔案路徑條目: ${entry.entryName}`);
       }
-      seenEntryNames.add(entry.entryName);
+      seenEntryNames.add(normalizedEntryKey);
+
+      // Check for symbolic link entries
+      const unixMode = (entry.header.attr >>> 16) & 0o170000;
+      if (unixMode === 0o120000) {
+        issues.push(`ZIP 條目偵測到符號連結 (Symlink)，基於 Windows 安全性已拒絕驗證: ${entry.entryName}`);
+      }
 
       // Check zip slip on every entry in zip
       if (!isSafeArchivePath(dummyDest, entry.entryName)) {
@@ -439,11 +446,12 @@ export class BackupService {
       for (const item of manifest.files) {
         totalSizeBytes += item.file_size || 0;
 
-        // Duplicate archive_path check in manifest
-        if (seenArchivePaths.has(item.archive_path)) {
-          issues.push(`manifest 中包含重複的封裝路徑: ${item.archive_path}`);
+        // Duplicate or case-collision check in manifest
+        const normalizedArchivePath = item.archive_path.toLowerCase();
+        if (seenArchivePaths.has(normalizedArchivePath)) {
+          issues.push(`manifest 中包含重複或大小寫衝突的封裝路徑: ${item.archive_path}`);
         }
-        seenArchivePaths.add(item.archive_path);
+        seenArchivePaths.add(normalizedArchivePath);
 
         // Zip Slip defense: archive_path must strictly stay inside destination
         if (!isSafeArchivePath(dummyDest, item.archive_path)) {
@@ -686,10 +694,18 @@ export class BackupService {
             } catch {}
           } catch (renameErr: any) {
             // Rollback if destination backup exists
+            let rollbackFailed = false;
             if (fs.existsSync(backupDestPath) && !fs.existsSync(finalDestPath)) {
-              try { fs.renameSync(backupDestPath, finalDestPath); } catch {}
+              try {
+                fs.renameSync(backupDestPath, finalDestPath);
+              } catch (rollbackErr: any) {
+                rollbackFailed = true;
+                errors.push({ item: fontLabel, error: `覆蓋寫入失敗且自動還原舊檔失敗: ${rollbackErr.message}` });
+              }
             }
-            throw renameErr;
+            if (!rollbackFailed) {
+              throw renameErr;
+            }
           }
         } else {
           fs.renameSync(tempFilePath, finalDestPath);
