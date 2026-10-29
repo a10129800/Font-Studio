@@ -85,12 +85,27 @@ export interface OperationLogEntry {
 }
 
 export interface BackupManifestItem {
+  font_id: string;
   original_path: string;
   archive_path: string;
   sha256: string;
   file_size: number;
   family_name: string;
+  localized_name?: string;
   style_name: string;
+  postscript_name?: string;
+  format: FontFormat;
+  face_index: number;
+  face_count: number;
+  source_type: FontSourceType;
+  install_scope: InstallScope;
+}
+
+export interface BackupFailedItem {
+  font_id?: string;
+  family_name?: string;
+  file_path: string;
+  error: string;
 }
 
 export interface BackupManifest {
@@ -99,6 +114,7 @@ export interface BackupManifest {
   created_at: string;
   font_count: number;
   files: BackupManifestItem[];
+  failed_items?: BackupFailedItem[];
   collections: CollectionRecord[];
   font_collections: { font_id: string; collection_id: string }[];
   tags: TagRecord[];
@@ -106,6 +122,71 @@ export interface BackupManifest {
   favorites: { font_id: string; created_at: string }[];
   settings: Record<string, string>;
   checksum: string; // SHA-256 of manifest data excluding checksum
+}
+
+export interface BackupProgressUpdate {
+  taskId: string;
+  type: 'backup' | 'restore';
+  phase: 'preparing' | 'processing' | 'verifying' | 'finalizing' | 'completed' | 'cancelled' | 'error';
+  total: number;
+  current: number;
+  currentItem: string;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  errors: { item: string; error: string }[];
+}
+
+export interface BackupResult {
+  success: boolean;
+  archivePath?: string;
+  archiveSize?: number;
+  fontCount: number;
+  sha256?: string;
+  failedCount: number;
+  failedItems: BackupFailedItem[];
+  error?: string;
+}
+
+export interface BackupVerificationResult {
+  valid: boolean;
+  manifest?: BackupManifest;
+  manifestVersion?: string;
+  appVersion?: string;
+  fontCount: number;
+  totalSizeBytes: number;
+  archiveSha256?: string;
+  issues: string[];
+  disclaimer: string;
+}
+
+export type RestoreConflictPolicy = 'skip' | 'rename' | 'overwrite';
+
+export interface RestoreOptions {
+  zipPath: string;
+  targetDirectory: string;
+  selectedSha256s?: string[];
+  conflictPolicy: RestoreConflictPolicy;
+  importMetadata?: {
+    collections?: boolean;
+    tags?: boolean;
+    favorites?: boolean;
+  };
+}
+
+export interface RestoreResult {
+  success: boolean;
+  restoredCount: number;
+  skippedCount: number;
+  failedCount: number;
+  restoredFiles: string[];
+  errors: { item: string; error: string }[];
+  metadataImported?: {
+    collections: number;
+    tags: number;
+    favorites: number;
+  };
+  error?: string;
 }
 
 export interface ScanProgressUpdate {

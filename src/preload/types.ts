@@ -8,6 +8,11 @@ import {
   BatchTaskProgressUpdate,
   StorageAnalysisReport,
   BackupManifest,
+  BackupResult,
+  BackupVerificationResult,
+  RestoreOptions,
+  RestoreResult,
+  BackupProgressUpdate,
 } from '../shared/types';
 
 export interface FontStudioAPI {
@@ -54,10 +59,18 @@ export interface FontStudioAPI {
     }>;
   };
   backup: {
-    create: (destinationZipPath: string, fontIds?: string[]) => Promise<{ success: boolean; error?: string }>;
-    verify: (zipPath: string) => Promise<{ valid: boolean; manifest?: BackupManifest; error?: string }>;
-    restore: (zipPath: string, selectedSha256s?: string[]) => Promise<{ success: boolean; error?: string }>;
-    onProgress: (callback: (update: any) => void) => () => void;
+    create: (
+      destinationZipPath: string,
+      options?: { fontIds?: string[]; collectionId?: string; includeAll?: boolean }
+    ) => Promise<BackupResult>;
+    verify: (zipPath: string) => Promise<BackupVerificationResult>;
+    restore: (options: RestoreOptions) => Promise<RestoreResult>;
+    cancelTask: (taskId: string) => Promise<{ success: boolean }>;
+    importMetadata: (
+      manifest: BackupManifest,
+      options?: { importCollections?: boolean; importTags?: boolean; importFavorites?: boolean }
+    ) => Promise<{ collections: number; tags: number; favorites: number }>;
+    onProgress: (callback: (update: BackupProgressUpdate) => void) => () => void;
   };
   storage: {
     getAnalysis: () => Promise<StorageAnalysisReport>;

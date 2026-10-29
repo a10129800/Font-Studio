@@ -11,6 +11,7 @@ import {
   FontFilterOptions,
   FontSourceType,
   InstallScope,
+  BackupManifest,
 } from '../../shared/types';
 
 export class DatabaseService {
@@ -697,6 +698,129 @@ export class DatabaseService {
   public isFavorite(fontId: string): boolean {
     const row = this.db.prepare('SELECT 1 FROM favorites WHERE font_id = ?').get(fontId);
     return !!row;
+  }
+
+  // ==================== Metadata Export & Import (M3) ====================
+
+  public getAllFontCollections(): { font_id: string; collection_id: string }[] {
+    return this.db.prepare('SELECT font_id, collection_id FROM font_collections').all() as any[];
+  }
+
+  public getAllFontTags(): { font_id: string; tag_id: string }[] {
+    return this.db.prepare('SELECT font_id, tag_id FROM font_tags').all() as any[];
+  }
+
+  public getAllFavorites(): { font_id: string; created_at: string }[] {
+    return this.db.prepare('SELECT font_id, created_at FROM favorites').all() as any[];
+  }
+
+  public getFontBySha256(sha256: string): FontRecord | undefined {
+    const row = this.db.prepare('SELECT * FROM fonts WHERE sha256 = ? LIMIT 1').get(sha256) as any;
+    return row ? this.mapFontRow(row) : undefined;
+  }
+
+  public importBackupMetadata(
+    manifest: BackupManifest,
+    options: { importCollections?: boolean; importTags?: boolean; importFavorites?: boolean } = {}
+  ): { collections: number; tags: number; favorites: number } {
+    let collectionsCount = 0;
+    let tagsCount = 0;
+    let favoritesCount = 0;
+
+    const tx = this.db.transaction(() => {
+      // Build lookup map for matching restored fonts
+      const fontIdMap = new Map<string, string>();
+      const allLocalFonts = this.getAllFonts();
+      const localShaMap = new Map<string, string>();
+      const localIdSet = new Set<string>();
+
+      for (const lf of allLocalFonts) {
+        localShaMap.set(lf.sha256, lf.id);
+        localIdSet.add(lf.id);
+      }
+
+      if (manifest.files) {
+        for (const item of manifest.files) {
+          if (localShaMap.has(item.sha256)) {
+            fontIdMap.set(item.font_id, localShaMap.get(item.sha256)!);
+          } else if (localIdSet.has(item.font_id)) {
+            fontIdMap.set(item.font_id, item.font_id);
+          }
+        }
+      }
+
+      // 1. Collections
+      if (options.importCollections !== false && manifest.collections) {
+        const insertCol = this.db.prepare(`
+          INSERT INTO collections (id, name, description, created_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET description = excluded.description
+        `);
+        for (const col of manifest.collections) {
+          const res = insertCol.run(
+            col.id,
+            col.name,
+            col.description || '',
+            col.created_at || new Date().toISOString()
+          );
+          if (res.changes > 0) collectionsCount++;
+        }
+
+        if (manifest.font_collections) {
+          const insertFc = this.db.prepare(`
+            INSERT OR IGNORE INTO font_collections (font_id, collection_id)
+            VALUES (?, ?)
+          `);
+          for (const fc of manifest.font_collections) {
+            const targetFontId = fontIdMap.get(fc.font_id) || (localIdSet.has(fc.font_id) ? fc.font_id : null);
+            if (targetFontId) {
+              insertFc.run(targetFontId, fc.collection_id);
+            }
+          }
+        }
+      }
+
+      // 2. Tags
+      if (options.importTags !== false && manifest.tags) {
+        const beforeTags = this.getAllTags().length;
+        for (const t of manifest.tags) {
+          this.getOrCreateTag(t.id, t.name);
+        }
+        const afterTags = this.getAllTags().length;
+        tagsCount = Math.max(0, afterTags - beforeTags);
+
+        if (manifest.font_tags) {
+          const insertFt = this.db.prepare(`
+            INSERT OR IGNORE INTO font_tags (font_id, tag_id)
+            VALUES (?, ?)
+          `);
+          for (const ft of manifest.font_tags) {
+            const targetFontId = fontIdMap.get(ft.font_id) || (localIdSet.has(ft.font_id) ? ft.font_id : null);
+            if (targetFontId) {
+              insertFt.run(targetFontId, ft.tag_id);
+            }
+          }
+        }
+      }
+
+      // 3. Favorites
+      if (options.importFavorites !== false && manifest.favorites) {
+        const insertFav = this.db.prepare(`
+          INSERT OR IGNORE INTO favorites (font_id, created_at)
+          VALUES (?, ?)
+        `);
+        for (const fav of manifest.favorites) {
+          const targetFontId = fontIdMap.get(fav.font_id) || (localIdSet.has(fav.font_id) ? fav.font_id : null);
+          if (targetFontId) {
+            const res = insertFav.run(targetFontId, fav.created_at || new Date().toISOString());
+            if (res.changes > 0) favoritesCount++;
+          }
+        }
+      }
+    });
+
+    tx();
+    return { collections: collectionsCount, tags: tagsCount, favorites: favoritesCount };
   }
 
   // ==================== Operations & Logs ====================

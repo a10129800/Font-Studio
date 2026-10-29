@@ -45,6 +45,7 @@ export const IPC_CHANNELS = {
   BACKUP_RESTORE: 'backup:restore',
   BACKUP_PROGRESS: 'backup:progress',
   BACKUP_CANCEL: 'backup:cancel',
+  BACKUP_IMPORT_METADATA: 'backup:import-metadata',
 
   // Storage Analysis
   STORAGE_GET_ANALYSIS: 'storage:get-analysis',

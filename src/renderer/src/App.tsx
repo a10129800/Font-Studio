@@ -486,9 +486,11 @@ export const App: React.FC = () => {
             {activeTab === 'backup' && (
               <BackupView
                 fonts={fonts}
-                onSelectSavePath={async () => {
+                collections={collections}
+                selectedFontIds={selectedFontIds}
+                onSelectSavePath={async (defaultName: string) => {
                   if (!api) return null;
-                  return api.dialog.saveFile('font_studio_backup.zip', [
+                  return api.dialog.saveFile(defaultName || 'font_studio_backup.zip', [
                     { name: 'ZIP Archive', extensions: ['zip'] },
                   ]);
                 }}
@@ -497,6 +499,15 @@ export const App: React.FC = () => {
                   return api.dialog.selectFile([
                     { name: 'ZIP Archive', extensions: ['zip'] },
                   ]);
+                }}
+                onSelectFolder={async () => {
+                  if (!api) return null;
+                  return api.dialog.selectFolder();
+                }}
+                onRefreshData={async () => {
+                  await loadFonts();
+                  await loadCollections();
+                  await loadCounts();
                 }}
               />
             )}

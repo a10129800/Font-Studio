@@ -3,10 +3,12 @@ import { DatabaseService } from '../services/databaseService';
 import { FontScannerService } from '../services/fontScannerService';
 import { FontInstallService } from '../services/fontInstallService';
 import { BatchJobQueue } from '../services/batchJobQueue';
+import { BackupService } from '../services/backupService';
 import { registerFontIpc } from './fontIpc';
 import { registerCollectionIpc } from './collectionIpc';
 import { registerDialogIpc } from './dialogIpc';
 import { registerInstallIpc } from './installIpc';
+import { registerBackupIpc } from './backupIpc';
 import { IPC_CHANNELS } from '../../shared/channels';
 
 export function registerAllIpcHandlers(
@@ -16,11 +18,13 @@ export function registerAllIpcHandlers(
 ): void {
   const installService = new FontInstallService(db);
   const batchQueue = new BatchJobQueue(db, installService);
+  const backupService = new BackupService(db);
 
   registerFontIpc(db, scanner, getMainWindow);
   registerCollectionIpc(db);
   registerDialogIpc(getMainWindow);
   registerInstallIpc(db, installService, batchQueue, getMainWindow);
+  registerBackupIpc(backupService, db, getMainWindow);
 
   // Storage Analysis handler
   ipcMain.handle(IPC_CHANNELS.STORAGE_GET_ANALYSIS, async () => {
@@ -84,20 +88,6 @@ export function registerAllIpcHandlers(
       potentialFamilyDuplicates: familyDupes,
       corruptedOrUnsupported,
     };
-  });
-
-  // Placeholder handlers for M3 with clear status reporting
-
-  ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, async () => {
-    throw new Error('Backup creation service is scheduled for Milestone M3');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.BACKUP_VERIFY, async () => {
-    throw new Error('Backup verification service is scheduled for Milestone M3');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.BACKUP_RESTORE, async () => {
-    throw new Error('Backup restore service is scheduled for Milestone M3');
   });
 }
 

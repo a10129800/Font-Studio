@@ -5,6 +5,9 @@ import {
   FontFilterOptions,
   ScanProgressUpdate,
   BatchTaskProgressUpdate,
+  BackupProgressUpdate,
+  RestoreOptions,
+  BackupManifest,
 } from '../shared/types';
 
 const api: FontStudioAPI = {
@@ -85,14 +88,22 @@ const api: FontStudioAPI = {
   },
 
   backup: {
-    create: (destinationZipPath: string, fontIds?: string[]) =>
-      ipcRenderer.invoke(IPC_CHANNELS.BACKUP_CREATE, { destinationZipPath, fontIds }),
+    create: (
+      destinationZipPath: string,
+      options?: { fontIds?: string[]; collectionId?: string; includeAll?: boolean }
+    ) => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_CREATE, { destinationZipPath, ...options }),
     verify: (zipPath: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.BACKUP_VERIFY, zipPath),
-    restore: (zipPath: string, selectedSha256s?: string[]) =>
-      ipcRenderer.invoke(IPC_CHANNELS.BACKUP_RESTORE, { zipPath, selectedSha256s }),
-    onProgress: (callback: (update: any) => void) => {
-      const handler = (_event: IpcRendererEvent, data: any) => callback(data);
+    restore: (options: RestoreOptions) =>
+      ipcRenderer.invoke(IPC_CHANNELS.BACKUP_RESTORE, options),
+    cancelTask: (taskId: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.BACKUP_CANCEL, { taskId }),
+    importMetadata: (
+      manifest: BackupManifest,
+      options?: { importCollections?: boolean; importTags?: boolean; importFavorites?: boolean }
+    ) => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_IMPORT_METADATA, { manifest, options }),
+    onProgress: (callback: (update: BackupProgressUpdate) => void) => {
+      const handler = (_event: IpcRendererEvent, data: BackupProgressUpdate) => callback(data);
       ipcRenderer.on(IPC_CHANNELS.BACKUP_PROGRESS, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.BACKUP_PROGRESS, handler);
     },
