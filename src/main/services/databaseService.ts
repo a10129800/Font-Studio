@@ -1,6 +1,7 @@
 import Database, { Database as DatabaseType } from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import {
   FontRecord,
   FontQueryResult,
@@ -751,19 +752,33 @@ export class DatabaseService {
 
       // 1. Collections
       if (options.importCollections !== false && manifest.collections) {
+        const collectionIdMap = new Map<string, string>();
+        const checkColByName = this.db.prepare('SELECT id FROM collections WHERE name = ?');
+        const checkColById = this.db.prepare('SELECT id FROM collections WHERE id = ?');
         const insertCol = this.db.prepare(`
           INSERT INTO collections (id, name, description, created_at)
           VALUES (?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET description = excluded.description
         `);
+
         for (const col of manifest.collections) {
-          const res = insertCol.run(
-            col.id,
-            col.name,
-            col.description || '',
-            col.created_at || new Date().toISOString()
-          );
-          if (res.changes > 0) collectionsCount++;
+          const trimmedName = (col.name || '').trim();
+          if (!trimmedName) continue;
+
+          const existingByName = checkColByName.get(trimmedName) as { id: string } | undefined;
+          if (existingByName) {
+            collectionIdMap.set(col.id, existingByName.id);
+          } else {
+            const existingById = checkColById.get(col.id);
+            const actualId = existingById ? crypto.randomUUID() : col.id;
+            const res = insertCol.run(
+              actualId,
+              trimmedName,
+              col.description || '',
+              col.created_at || new Date().toISOString()
+            );
+            collectionIdMap.set(col.id, actualId);
+            if (res.changes > 0) collectionsCount++;
+          }
         }
 
         if (manifest.font_collections) {
@@ -773,8 +788,9 @@ export class DatabaseService {
           `);
           for (const fc of manifest.font_collections) {
             const targetFontId = fontIdMap.get(fc.font_id) || (localIdSet.has(fc.font_id) ? fc.font_id : null);
-            if (targetFontId) {
-              insertFc.run(targetFontId, fc.collection_id);
+            const targetColId = collectionIdMap.get(fc.collection_id);
+            if (targetFontId && targetColId) {
+              insertFc.run(targetFontId, targetColId);
             }
           }
         }
@@ -783,8 +799,13 @@ export class DatabaseService {
       // 2. Tags
       if (options.importTags !== false && manifest.tags) {
         const beforeTags = this.getAllTags().length;
+        const tagIdMap = new Map<string, string>();
+
         for (const t of manifest.tags) {
-          this.getOrCreateTag(t.id, t.name);
+          const trimmedTagName = (t.name || '').trim();
+          if (!trimmedTagName) continue;
+          const tagRecord = this.getOrCreateTag(t.id, trimmedTagName);
+          tagIdMap.set(t.id, tagRecord.id);
         }
         const afterTags = this.getAllTags().length;
         tagsCount = Math.max(0, afterTags - beforeTags);
@@ -796,8 +817,9 @@ export class DatabaseService {
           `);
           for (const ft of manifest.font_tags) {
             const targetFontId = fontIdMap.get(ft.font_id) || (localIdSet.has(ft.font_id) ? ft.font_id : null);
-            if (targetFontId) {
-              insertFt.run(targetFontId, ft.tag_id);
+            const targetTagId = tagIdMap.get(ft.tag_id);
+            if (targetFontId && targetTagId) {
+              insertFt.run(targetFontId, targetTagId);
             }
           }
         }

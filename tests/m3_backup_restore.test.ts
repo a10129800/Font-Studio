@@ -96,7 +96,7 @@ describe('Milestone M3: Font Backup, Verification, and Restore Suite', () => {
     dbService.close();
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   });
 
   // ==================== 1. Backup Creation & Reading ====================
@@ -369,3 +369,4 @@ describe('Milestone M3: Font Backup, Verification, and Restore Suite', () => {
     expect(tempFiles).toHaveLength(0);
   });
 });
+

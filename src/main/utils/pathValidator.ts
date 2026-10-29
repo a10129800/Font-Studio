@@ -34,16 +34,62 @@ export function isValidDirectoryPath(dirPath: string): boolean {
 
 /**
  * Prevents Zip Slip vulnerability by ensuring target path stays strictly inside destination directory.
+ * Disallows absolute paths, drive letters, UNC roots, leading slashes, and traversal segments ('..').
  */
 export function isSafeArchivePath(destinationDir: string, relativePath: string): boolean {
-  if (!destinationDir || !relativePath) return false;
+  if (!destinationDir || !relativePath || typeof relativePath !== 'string') return false;
   if (relativePath.includes('\0')) return false;
+
+  const normalized = relativePath.replace(/\\/g, '/');
+
+  // Reject absolute paths, Windows drive specifiers, or UNC paths
+  if (path.isAbsolute(relativePath) || path.win32.isAbsolute(relativePath)) return false;
+  if (/^[a-zA-Z]:/.test(relativePath)) return false;
+  if (normalized.startsWith('/') || normalized.startsWith('//')) return false;
+
+  // Check for traversal segments
+  const segments = normalized.split('/');
+  if (segments.some((seg) => seg === '..')) return false;
 
   const destResolved = path.resolve(destinationDir);
   const targetResolved = path.resolve(destinationDir, relativePath);
 
-  // targetResolved must start with destResolved + separator
   return targetResolved.startsWith(destResolved + path.sep) || targetResolved === destResolved;
+}
+
+const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..+)?$/i;
+
+/**
+ * Sanitizes a filename for Windows filesystem safety:
+ * - Replaces illegal characters (/\:*?"<>|)
+ * - Guards against Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+ * - Trims trailing dots and spaces
+ * - Fallbacks to safe default if empty
+ */
+export function sanitizeWindowsFilename(rawName: string, fallbackPrefix = 'font'): string {
+  if (!rawName || typeof rawName !== 'string') {
+    return `${fallbackPrefix}_${Date.now()}.ttf`;
+  }
+
+  // Remove null bytes and control chars
+  let clean = rawName.replace(/[\0\x01-\x1F]/g, '');
+  // Replace illegal Windows filename chars
+  clean = clean.replace(/[\/\\:\*\?"<>\|]/g, '_');
+  // Trim trailing periods and spaces (prohibited by Windows)
+  clean = clean.replace(/[\.\s]+$/, '');
+  // Trim leading spaces
+  clean = clean.trim();
+
+  // Guard against Windows reserved device names
+  if (WINDOWS_RESERVED_NAMES.test(clean)) {
+    clean = `safe_${clean}`;
+  }
+
+  if (!clean || clean === '.' || clean === '..') {
+    clean = `${fallbackPrefix}_${Date.now()}.ttf`;
+  }
+
+  return clean;
 }
 
 /**

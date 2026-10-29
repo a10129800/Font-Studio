@@ -250,21 +250,19 @@ export const BackupView: React.FC<BackupViewProps> = ({
         <div className="flex bg-studio-900 border border-studio-800 p-1 rounded-xl">
           <button
             onClick={() => setActiveSubTab('create')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeSubTab === 'create'
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeSubTab === 'create'
                 ? 'bg-brand-600 text-white shadow-sm'
                 : 'text-studio-400 hover:text-white'
-            }`}
+              }`}
           >
             建立備份 (Backup)
           </button>
           <button
             onClick={() => setActiveSubTab('restore')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeSubTab === 'restore'
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeSubTab === 'restore'
                 ? 'bg-brand-600 text-white shadow-sm'
                 : 'text-studio-400 hover:text-white'
-            }`}
+              }`}
           >
             驗證與還原 (Restore)
           </button>
@@ -286,11 +284,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
             <div className="grid grid-cols-3 gap-4">
               <div
                 onClick={() => setBackupScope('all')}
-                className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                  backupScope === 'all'
+                className={`p-4 rounded-xl border cursor-pointer transition-all ${backupScope === 'all'
                     ? 'bg-brand-500/10 border-brand-500 text-white'
                     : 'bg-studio-950 border-studio-800 text-studio-300 hover:border-studio-700'
-                }`}
+                  }`}
               >
                 <div className="font-semibold text-xs flex items-center justify-between">
                   <span>全部已索引字體</span>
@@ -303,13 +300,12 @@ export const BackupView: React.FC<BackupViewProps> = ({
                 onClick={() => {
                   if (selectedFontIds.size > 0) setBackupScope('selected');
                 }}
-                className={`p-4 rounded-xl border transition-all ${
-                  selectedFontIds.size === 0
+                className={`p-4 rounded-xl border transition-all ${selectedFontIds.size === 0
                     ? 'opacity-40 cursor-not-allowed bg-studio-950 border-studio-800 text-studio-500'
                     : backupScope === 'selected'
-                    ? 'bg-brand-500/10 border-brand-500 text-white cursor-pointer'
-                    : 'bg-studio-950 border-studio-800 text-studio-300 hover:border-studio-700 cursor-pointer'
-                }`}
+                      ? 'bg-brand-500/10 border-brand-500 text-white cursor-pointer'
+                      : 'bg-studio-950 border-studio-800 text-studio-300 hover:border-studio-700 cursor-pointer'
+                  }`}
               >
                 <div className="font-semibold text-xs flex items-center justify-between">
                   <span>目前選取的字體</span>
@@ -322,11 +318,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
               <div
                 onClick={() => setBackupScope('collection')}
-                className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                  backupScope === 'collection'
+                className={`p-4 rounded-xl border cursor-pointer transition-all ${backupScope === 'collection'
                     ? 'bg-brand-500/10 border-brand-500 text-white'
                     : 'bg-studio-950 border-studio-800 text-studio-300 hover:border-studio-700'
-                }`}
+                  }`}
               >
                 <div className="font-semibold text-xs flex items-center justify-between">
                   <span>指定分類庫字體</span>
@@ -334,6 +329,15 @@ export const BackupView: React.FC<BackupViewProps> = ({
                 </div>
                 <p className="text-[11px] text-studio-400 mt-1">選取特定分類專案資料庫進行單獨打包備份。</p>
               </div>
+            </div>
+
+            {/* Privacy notice regarding original paths */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-studio-950/80 border border-studio-800/80 text-[11px] text-studio-400">
+              <ShieldCheck className="w-4 h-4 text-studio-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-studio-300">隱私與中繼資料說明：</strong>
+                備份 ZIP 檔案內包含 <code className="text-studio-300">manifest.json</code> 與各字體之原始來源路徑（original_path），以利還原比對與檔案關聯。若計畫將備份封裝分享予外部第三方，請留意路徑中可能包含您的本機使用者名稱或磁碟目錄結構。
+              </span>
             </div>
 
             {/* Collection Dropdown if Collection Scope */}
@@ -396,11 +400,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
                   <div
                     className="h-full bg-brand-500 transition-all duration-200"
                     style={{
-                      width: `${
-                        backupProgress.total > 0
+                      width: `${backupProgress.total > 0
                           ? Math.round((backupProgress.current / backupProgress.total) * 100)
                           : 0
-                      }%`,
+                        }%`,
                     }}
                   />
                 </div>
@@ -410,11 +413,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
             {/* Backup Result Card */}
             {backupResult && (
               <div
-                className={`p-5 rounded-xl border space-y-3 ${
-                  backupResult.success
+                className={`p-5 rounded-xl border space-y-3 ${backupResult.success
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                     : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 font-bold text-sm">
                   {backupResult.success ? (
@@ -523,11 +525,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
             {/* Verification Result Panel */}
             {verificationResult && (
               <div
-                className={`p-5 rounded-xl border space-y-3 text-xs ${
-                  verificationResult.valid
+                className={`p-5 rounded-xl border space-y-3 text-xs ${verificationResult.valid
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                     : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 font-bold text-sm">
                   {verificationResult.valid ? (
@@ -627,11 +628,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
                 <label className="text-xs text-studio-300 font-medium">檔案名稱衝突處理原則:</label>
                 <div className="grid grid-cols-3 gap-3">
                   <label
-                    className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                      conflictPolicy === 'rename'
+                    className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${conflictPolicy === 'rename'
                         ? 'bg-brand-500/10 border-brand-500 text-white'
                         : 'bg-studio-950 border-studio-800 text-studio-400 hover:border-studio-700'
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
@@ -647,11 +647,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
                   </label>
 
                   <label
-                    className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                      conflictPolicy === 'skip'
+                    className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${conflictPolicy === 'skip'
                         ? 'bg-brand-500/10 border-brand-500 text-white'
                         : 'bg-studio-950 border-studio-800 text-studio-400 hover:border-studio-700'
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
@@ -667,11 +666,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
                   </label>
 
                   <label
-                    className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                      conflictPolicy === 'overwrite'
+                    className={`p-3 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${conflictPolicy === 'overwrite'
                         ? 'bg-rose-500/10 border-rose-500 text-white'
                         : 'bg-studio-950 border-studio-800 text-studio-400 hover:border-studio-700'
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"
@@ -782,11 +780,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
                     <div
                       className="h-full bg-emerald-500 transition-all duration-200"
                       style={{
-                        width: `${
-                          restoreProgress.total > 0
+                        width: `${restoreProgress.total > 0
                             ? Math.round((restoreProgress.current / restoreProgress.total) * 100)
                             : 0
-                        }%`,
+                          }%`,
                       }}
                     />
                   </div>
@@ -796,11 +793,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
               {/* Restore Result Card */}
               {restoreResult && (
                 <div
-                  className={`p-5 rounded-xl border space-y-3 ${
-                    restoreResult.success
+                  className={`p-5 rounded-xl border space-y-3 ${restoreResult.success
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                       : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2 font-bold text-sm">
                     {restoreResult.success ? (

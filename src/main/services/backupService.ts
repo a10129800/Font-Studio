@@ -15,7 +15,7 @@ import {
 } from '../../shared/types';
 import { DatabaseService } from './databaseService';
 import { calculateFileSha256, calculateSha256 } from '../utils/hash';
-import { isSafeArchivePath, isSystemFontPath, isValidDirectoryPath } from '../utils/pathValidator';
+import { isSafeArchivePath, isSystemFontPath, isValidDirectoryPath, sanitizeWindowsFilename } from '../utils/pathValidator';
 
 export class BackupService {
   private db: DatabaseService;
@@ -256,6 +256,7 @@ export class BackupService {
     const fullManifest: BackupManifest = {
       ...manifestData,
       checksum: manifestChecksum,
+      manifestSha256: manifestChecksum,
     };
 
     zip.addFile('manifest.json', Buffer.from(JSON.stringify(fullManifest, null, 2), 'utf-8'));
@@ -336,6 +337,57 @@ export class BackupService {
       };
     }
 
+    const dummyDest = path.resolve('C:\\SafeDummyDir');
+
+    // 0. Check ZIP entry structure, Zip Slip, bomb risks, and forbidden files
+    const zipEntries = zip.getEntries();
+    if (zipEntries.length > 10000) {
+      issues.push('ZIP 內檔案數量過大 (超過 10,000 個條目)，超出安全上限。');
+    }
+
+    const seenEntryNames = new Set<string>();
+    let totalUncompressedBytes = 0;
+    const dangerousExtensions = ['.exe', '.dll', '.bat', '.cmd', '.vbs', '.scr', '.ps1', '.msi', '.com', '.pif'];
+
+    for (const entry of zipEntries) {
+      // Check entry name duplicates inside ZIP
+      if (seenEntryNames.has(entry.entryName)) {
+        issues.push(`ZIP 檔案內存在重複的檔案路徑條目: ${entry.entryName}`);
+      }
+      seenEntryNames.add(entry.entryName);
+
+      // Check zip slip on every entry in zip
+      if (!isSafeArchivePath(dummyDest, entry.entryName)) {
+        issues.push(`ZIP 條目偵測到潛在 Zip Slip 路徑穿越攻擊: ${entry.entryName}`);
+      }
+
+      // Check dangerous extensions
+      const lowerEntryName = entry.entryName.toLowerCase();
+      if (dangerousExtensions.some((ext) => lowerEntryName.endsWith(ext))) {
+        issues.push(`ZIP 壓縮包內包含危險可執行檔，已拒絕驗證: ${entry.entryName}`);
+      }
+
+      // Single file uncompressed size limit: 500 MB
+      if (entry.header.size > 500 * 1024 * 1024) {
+        issues.push(`單一檔案解壓縮大小超出安全上限 (500MB): ${entry.entryName}`);
+      }
+
+      // Decompression bomb check (high ratio and uncompressed size > 10MB)
+      if (entry.header.compressedSize > 0 && entry.header.size > 10 * 1024 * 1024) {
+        const ratio = entry.header.size / entry.header.compressedSize;
+        if (ratio > 100) {
+          issues.push(`偵測到潛在 ZIP 炸彈 (異常壓縮比 > 100:1): ${entry.entryName}`);
+        }
+      }
+
+      totalUncompressedBytes += entry.header.size;
+    }
+
+    // Total uncompressed size limit: 2 GB
+    if (totalUncompressedBytes > 2 * 1024 * 1024 * 1024) {
+      issues.push('ZIP 總解壓縮大小超過 2GB 安全上限。');
+    }
+
     // 1. Read and parse manifest.json
     const manifestEntry = zip.getEntry('manifest.json');
     if (!manifestEntry) {
@@ -367,24 +419,31 @@ export class BackupService {
       issues.push(`不支援的備份清單版本: ${manifest.manifest_version} (目前支援版本 1.x)`);
     }
 
-    // 3. Verify manifest checksum
-    if (manifest.checksum) {
-      const { checksum, ...manifestWithoutChecksum } = manifest;
+    // 3. Verify manifest checksum / manifestSha256
+    const expectedChecksum = manifest.checksum || manifest.manifestSha256;
+    if (expectedChecksum && typeof expectedChecksum === 'string' && expectedChecksum.trim()) {
+      const { checksum, manifestSha256, ...manifestWithoutChecksum } = manifest;
       const recomputedChecksum = calculateSha256(JSON.stringify(manifestWithoutChecksum, null, 2));
-      if (recomputedChecksum !== checksum) {
+      if (recomputedChecksum !== expectedChecksum.trim()) {
         issues.push('manifest.json 校驗碼不符，中繼資料清單可能遭到修改。');
       }
     } else {
-      issues.push('manifest.json 缺少安全校驗碼 (checksum)。');
+      issues.push('manifest.json 缺少安全校驗碼 (checksum / manifestSha256)。');
     }
 
     // 4. Validate each file in manifest
     let totalSizeBytes = 0;
-    const dummyDest = path.resolve('C:\\SafeDummyDir');
+    const seenArchivePaths = new Set<string>();
 
     if (Array.isArray(manifest.files)) {
       for (const item of manifest.files) {
         totalSizeBytes += item.file_size || 0;
+
+        // Duplicate archive_path check in manifest
+        if (seenArchivePaths.has(item.archive_path)) {
+          issues.push(`manifest 中包含重複的封裝路徑: ${item.archive_path}`);
+        }
+        seenArchivePaths.add(item.archive_path);
 
         // Zip Slip defense: archive_path must strictly stay inside destination
         if (!isSafeArchivePath(dummyDest, item.archive_path)) {
@@ -570,9 +629,8 @@ export class BackupService {
       }
 
       // Determine final destination filename
-      let baseName = path.basename(item.original_path || item.archive_path);
-      // Sanitize filename
-      baseName = baseName.replace(/[\/\\:\*\?"<>\|]/g, '_');
+      const rawBaseName = path.basename(item.original_path || item.archive_path);
+      const baseName = sanitizeWindowsFilename(rawBaseName, `font_${item.font_id}`);
       let finalDestPath = path.join(resolvedTargetDir, baseName);
 
       // Handle file collision
@@ -584,7 +642,13 @@ export class BackupService {
         } else if (options.conflictPolicy === 'rename') {
           const ext = path.extname(baseName);
           const nameWithoutExt = path.basename(baseName, ext);
-          finalDestPath = path.join(resolvedTargetDir, `${nameWithoutExt} (restored_${item.sha256.slice(0, 6)})${ext}`);
+          let candidate = path.join(resolvedTargetDir, `${nameWithoutExt} (restored_${item.sha256.slice(0, 6)})${ext}`);
+          let counter = 1;
+          while (fs.existsSync(candidate)) {
+            candidate = path.join(resolvedTargetDir, `${nameWithoutExt} (restored_${item.sha256.slice(0, 6)}_${counter})${ext}`);
+            counter++;
+          }
+          finalDestPath = candidate;
         }
         // If 'overwrite', finalDestPath remains unchanged
       }
@@ -601,17 +665,36 @@ export class BackupService {
         // Verify SHA-256 of the written file
         const writtenSha256 = calculateSha256(fs.readFileSync(tempFilePath));
         if (writtenSha256 !== item.sha256) {
-          fs.unlinkSync(tempFilePath);
+          try {
+            if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+          } catch {}
+          const idx = activeTempFiles.indexOf(tempFilePath);
+          if (idx !== -1) activeTempFiles.splice(idx, 1);
           errors.push({ item: fontLabel, error: '寫入暫存檔校驗碼不符，已安全抹除。' });
           progress.failedCount++;
           continue;
         }
 
-        // Rename temp file to target destination
+        // Safe atomic overwrite with backup & rollback
         if (fs.existsSync(finalDestPath) && options.conflictPolicy === 'overwrite') {
-          fs.unlinkSync(finalDestPath);
+          const backupDestPath = `${finalDestPath}.fs_bak_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          try {
+            fs.renameSync(finalDestPath, backupDestPath);
+            fs.renameSync(tempFilePath, finalDestPath);
+            try {
+              if (fs.existsSync(backupDestPath)) fs.unlinkSync(backupDestPath);
+            } catch {}
+          } catch (renameErr: any) {
+            // Rollback if destination backup exists
+            if (fs.existsSync(backupDestPath) && !fs.existsSync(finalDestPath)) {
+              try { fs.renameSync(backupDestPath, finalDestPath); } catch {}
+            }
+            throw renameErr;
+          }
+        } else {
+          fs.renameSync(tempFilePath, finalDestPath);
         }
-        fs.renameSync(tempFilePath, finalDestPath);
+
         restoredFiles.push(finalDestPath);
         progress.successCount++;
 
@@ -624,6 +707,8 @@ export class BackupService {
             fs.unlinkSync(tempFilePath);
           } catch {}
         }
+        const idx = activeTempFiles.indexOf(tempFilePath);
+        if (idx !== -1) activeTempFiles.splice(idx, 1);
         errors.push({ item: fontLabel, error: `寫入失敗: ${writeErr.message}` });
         progress.failedCount++;
       }
@@ -663,3 +748,4 @@ export class BackupService {
     };
   }
 }
+

@@ -122,6 +122,7 @@ export interface BackupManifest {
   favorites: { font_id: string; created_at: string }[];
   settings: Record<string, string>;
   checksum: string; // SHA-256 of manifest data excluding checksum
+  manifestSha256?: string; // Canonical alias for manifest checksum
 }
 
 export interface BackupProgressUpdate {

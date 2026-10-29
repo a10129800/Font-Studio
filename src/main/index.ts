@@ -114,8 +114,13 @@ function setupFontPreviewProtocol(): void {
 app.whenReady().then(() => {
   setupFontPreviewProtocol();
 
-  // Initialize SQLite database and services
-  dbService = new DatabaseService();
+  // Initialize SQLite database in Electron standard userData directory
+  const userDataDir = app.getPath('userData');
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  }
+  const dbPath = path.join(userDataDir, 'font_studio.db');
+  dbService = new DatabaseService(dbPath);
   scannerService = new FontScannerService(dbService);
 
   // Register all secure IPC channels

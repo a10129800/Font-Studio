@@ -113,3 +113,4 @@ export function registerBackupIpc(
     return db.importBackupMetadata(manifest, options);
   });
 }
+
