@@ -2,7 +2,7 @@ import React from 'react';
 import { FontRecord, FontFormat } from '../../../../shared/types';
 import { FontCard } from '../FontCard';
 import { FontListRow } from '../FontListRow';
-import { FolderSearch, ChevronLeft, ChevronRight, X, CheckSquare, Square } from 'lucide-react';
+import { FolderSearch, ChevronLeft, ChevronRight, X, CheckSquare, Square, FileUp, FolderOpen } from 'lucide-react';
 
 interface FontGridViewProps {
   fonts: FontRecord[];
@@ -21,6 +21,9 @@ interface FontGridViewProps {
   onToggleFavorite: (fontId: string) => void;
   onSelectFontForDetail: (font: FontRecord) => void;
   onScanFonts: () => void;
+  onImportFiles?: () => void;
+  onImportFolder?: () => void;
+  isLocalView?: boolean;
   // Filters for chips
   searchQuery: string;
   onClearSearch: () => void;
@@ -45,6 +48,9 @@ export const FontGridView: React.FC<FontGridViewProps> = ({
   onToggleFavorite,
   onSelectFontForDetail,
   onScanFonts,
+  onImportFiles,
+  onImportFolder,
+  isLocalView,
   searchQuery,
   onClearSearch,
   formatFilter,
@@ -114,7 +120,9 @@ export const FontGridView: React.FC<FontGridViewProps> = ({
           <p className="text-xs text-studio-400 mt-1.5 max-w-sm">
             {hasActiveFilters
               ? '目前的搜尋或篩選條件查無相符項目，請嘗試清除篩選。'
-              : '本機尚未掃描任何字體，請點擊下方按鈕開始掃描 Windows 系統字體。'}
+              : isLocalView
+              ? '尚未匯入任何自訂字體檔案或資料夾，請點擊下方按鈕開始匯入。'
+              : '尚未掃描任何字體，請點擊下方按鈕開始掃描 Windows 系統字體。'}
           </p>
           <div className="flex items-center gap-3 mt-5">
             {hasActiveFilters ? (
@@ -127,6 +135,23 @@ export const FontGridView: React.FC<FontGridViewProps> = ({
               >
                 清除所有篩選
               </button>
+            ) : isLocalView ? (
+              <>
+                <button
+                  onClick={onImportFiles || onImportFolder}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-semibold text-white transition-colors"
+                >
+                  <FileUp className="w-3.5 h-3.5" />
+                  <span>匯入字體檔案</span>
+                </button>
+                <button
+                  onClick={onImportFolder}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-studio-800 hover:bg-studio-700 text-xs font-semibold text-white transition-colors border border-studio-700"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+                  <span>匯入資料夾</span>
+                </button>
+              </>
             ) : (
               <button
                 onClick={onScanFonts}

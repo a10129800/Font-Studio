@@ -79,11 +79,14 @@ npm test
 # Type-check TypeScript
 npm run lint
 
-# Compile Electron main process and Vite renderer
+# Compile Electron main process and Vite renderer (generates icons automatically)
 npm run build
 
 # Start Electron in development mode
 npm run dev
+
+# Package Windows NSIS installer
+npm run dist
 ```
 
 ---

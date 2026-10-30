@@ -78,6 +78,7 @@ export interface FontStudioAPI {
   dialog: {
     selectFolder: () => Promise<string | null>;
     selectFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>;
+    selectFiles: (filters?: { name: string; extensions: string[] }[]) => Promise<string[] | null>;
     saveFile: (defaultName: string, filters: { name: string; extensions: string[] }[]) => Promise<string | null>;
   };
   system: {

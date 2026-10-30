@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Search,
   SlidersHorizontal,
   LayoutGrid,
   List,
   FolderOpen,
+  FileUp,
+  ChevronDown,
   RefreshCw,
   Sun,
   Moon,
@@ -28,6 +30,7 @@ interface HeaderProps {
   isScanning: boolean;
   onStartScan: () => void;
   onImportFolder: () => void;
+  onImportFiles?: () => void;
   isDarkMode: boolean;
   onToggleTheme: () => void;
 }
@@ -48,9 +51,22 @@ export const Header: React.FC<HeaderProps> = ({
   isScanning,
   onStartScan,
   onImportFolder,
+  onImportFiles,
   isDarkMode,
   onToggleTheme,
 }) => {
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
+  const importMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) {
+        setIsImportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   return (
     <header className="h-16 bg-studio-900 border-b border-studio-800 px-6 flex items-center justify-between gap-4 flex-shrink-0 select-none">
       {/* Search Input */}
@@ -142,16 +158,45 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
 
-        {/* Import Folder Button */}
-        <button
-          onClick={onImportFolder}
-          disabled={isScanning}
-          title="匯入自訂字體資料夾"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-studio-700 bg-studio-800 hover:bg-studio-700 text-xs text-studio-200 transition-colors disabled:opacity-50"
-        >
-          <FolderOpen className="w-3.5 h-3.5" />
-          <span>匯入</span>
-        </button>
+        {/* Import Action Dropdown */}
+        <div className="relative" ref={importMenuRef}>
+          <button
+            onClick={() => setIsImportMenuOpen((prev) => !prev)}
+            disabled={isScanning}
+            title="匯入自訂字體檔案或資料夾"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-studio-700 bg-studio-800 hover:bg-studio-700 text-xs text-studio-200 transition-colors disabled:opacity-50"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+            <span>匯入</span>
+            <ChevronDown className="w-3 h-3 text-studio-400" />
+          </button>
+
+          {isImportMenuOpen && (
+            <div className="absolute right-0 mt-1.5 w-48 bg-studio-900 border border-studio-700 rounded-xl shadow-2xl py-1 z-50">
+              <button
+                onClick={() => {
+                  setIsImportMenuOpen(false);
+                  if (onImportFiles) onImportFiles();
+                  else onImportFolder();
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-studio-200 hover:bg-studio-800 flex items-center gap-2 transition-colors"
+              >
+                <FileUp className="w-3.5 h-3.5 text-brand-400" />
+                <span>匯入字體檔案...</span>
+              </button>
+              <button
+                onClick={() => {
+                  setIsImportMenuOpen(false);
+                  onImportFolder();
+                }}
+                className="w-full text-left px-3 py-2 text-xs text-studio-200 hover:bg-studio-800 flex items-center gap-2 transition-colors"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+                <span>匯入字體資料夾...</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Scan System Fonts Button */}
         <button

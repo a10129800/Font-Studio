@@ -1,4 +1,4 @@
-# Logs
+# Logs & diagnostic dumps
 logs
 *.log
 npm-debug.log*
@@ -6,6 +6,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+fontstudio_startup.log
+startup_error.log
+*.dmp
 
 # Diagnostic reports
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -42,17 +45,52 @@ dist-electron
 dist-renderer
 release
 
-# SQLite databases & temp files
+# SQLite databases & user data
 *.db
 *.db-wal
 *.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-journal
+font_studio.db*
+userData/
+
+# User font files (prevents accidental commit of proprietary or personal fonts)
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.ttc
+*.fon
+*.eot
+
+# Backups & archives
+*.zip
+*.bak
+*.backup
+*.7z
+*.tar.gz
+backups/
+backup/
+
+# Secrets, certificates, and environment variables
+.env
+.env.local
+.env.*.local
+*.env
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+*.crt
 
 # Operating System files
 .DS_Store
 Thumbs.db
 ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
 
 # IDE and Editor files
 .vscode/*
@@ -60,4 +98,7 @@ ehthumbs.db
 .idea
 *.sublime-workspace
 *.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
 

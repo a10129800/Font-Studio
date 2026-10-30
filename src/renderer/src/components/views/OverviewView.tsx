@@ -6,6 +6,7 @@ import {
   Heart,
   RefreshCw,
   FolderOpen,
+  FileUp,
   Copy,
   Archive,
   ArrowRight,
@@ -19,6 +20,7 @@ interface OverviewViewProps {
   onNavigate: (tab: NavTabId) => void;
   onStartScan: () => void;
   onImportFolder: () => void;
+  onImportFiles?: () => void;
   isScanning: boolean;
 }
 
@@ -27,6 +29,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onNavigate,
   onStartScan,
   onImportFolder,
+  onImportFiles,
   isScanning,
 }) => {
   const total = fonts.length;
@@ -59,10 +62,19 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <span>{isScanning ? '正在掃描...' : '掃描 Windows 字體'}</span>
           </button>
           <button
+            onClick={onImportFiles || onImportFolder}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-studio-800 hover:bg-studio-700 text-xs font-semibold text-studio-200 border border-studio-700 transition-all"
+            title="選擇一或多個字體檔案匯入"
+          >
+            <FileUp className="w-3.5 h-3.5 text-brand-400" />
+            <span>匯入檔案</span>
+          </button>
+          <button
             onClick={onImportFolder}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-studio-800 hover:bg-studio-700 text-xs font-semibold text-studio-200 border border-studio-700 transition-all"
+            title="選擇自訂字體資料夾進行掃描匯入"
           >
-            <FolderOpen className="w-3.5 h-3.5" />
+            <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
             <span>匯入資料夾</span>
           </button>
         </div>

@@ -71,7 +71,8 @@ export const App: React.FC = () => {
   const [batchProgress, setBatchProgress] = useState<BatchTaskProgressUpdate | null>(null);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
 
-  const api = typeof window !== 'undefined' ? window.fontStudioAPI : undefined;
+  const getApi = () => (typeof window !== 'undefined' ? window.fontStudioAPI : undefined);
+  const api = getApi();
 
   // Load global counts for sidebar badges
   const loadCounts = useCallback(async () => {
@@ -160,7 +161,11 @@ export const App: React.FC = () => {
         loadFonts();
         loadCollections();
         loadCounts();
-        setStatusMessage(`掃描完成！新增或更新共 ${progress.successCount} 個字體`);
+        if (progress.total === 0) {
+          setStatusMessage('掃描完成：未發現有效的字體檔案（支援格式：TTF, OTF, WOFF, WOFF2, TTC）');
+        } else {
+          setStatusMessage(`掃描完成！新增或更新共 ${progress.successCount} 個字體${progress.failedCount > 0 ? ` (${progress.failedCount} 個失敗)` : ''}`);
+        }
       } else if (progress.phase === 'cancelled') {
         loadFonts();
         loadCounts();
@@ -235,11 +240,47 @@ export const App: React.FC = () => {
   };
 
   const handleImportFolder = async () => {
-    if (!api) return;
-    const folder = await api.dialog.selectFolder();
-    if (folder) {
+    const activeApi = getApi();
+    if (!activeApi) {
+      setStatusMessage('無法取得應用程式 API，請稍後再試');
+      return;
+    }
+    try {
+      const folder = await activeApi.dialog.selectFolder();
+      if (!folder) {
+        setStatusMessage('已取消匯入資料夾');
+        return;
+      }
       setStatusMessage(`正在掃描自訂資料夾: ${folder}`);
-      await api.fonts.startScan([folder]);
+      setActiveTab('local');
+      await activeApi.fonts.startScan([folder]);
+    } catch (err: any) {
+      console.error('Import folder error:', err);
+      setStatusMessage(`匯入資料夾失敗: ${err?.message || String(err)}`);
+    }
+  };
+
+  const handleImportFiles = async () => {
+    const activeApi = getApi();
+    if (!activeApi) {
+      setStatusMessage('無法取得應用程式 API，請稍後再試');
+      return;
+    }
+    try {
+      const files = await activeApi.dialog.selectFiles([
+        { name: '字體檔案 (*.ttf;*.otf;*.woff;*.woff2;*.ttc)', extensions: ['ttf', 'otf', 'woff', 'woff2', 'ttc'] },
+        { name: '所有檔案 (*.*)', extensions: ['*'] },
+      ]);
+      if (!files || files.length === 0) {
+        setStatusMessage('已取消選取字體檔案');
+        return;
+      }
+      setStatusMessage(`正在匯入 ${files.length} 個字體檔案...`);
+      setActiveTab('local');
+      await activeApi.fonts.startScan(files);
+    } catch (err: any) {
+      console.error('Import files error:', err);
+      setStatusMessage(`匯入字體檔案失敗: ${err?.message || String(err)}`);
     }
   };
 
@@ -410,6 +451,7 @@ export const App: React.FC = () => {
             isScanning={isScanning}
             onStartScan={handleStartScan}
             onImportFolder={handleImportFolder}
+            onImportFiles={handleImportFiles}
             isDarkMode={isDarkMode}
             onToggleTheme={() => setIsDarkMode(!isDarkMode)}
           />
@@ -422,6 +464,7 @@ export const App: React.FC = () => {
                 onNavigate={handleTabChange}
                 onStartScan={handleStartScan}
                 onImportFolder={handleImportFolder}
+                onImportFiles={handleImportFiles}
                 isScanning={isScanning}
               />
             )}
@@ -447,6 +490,9 @@ export const App: React.FC = () => {
                 onToggleFavorite={handleToggleFavorite}
                 onSelectFontForDetail={setSelectedFontForDetail}
                 onScanFonts={handleStartScan}
+                onImportFiles={handleImportFiles}
+                onImportFolder={handleImportFolder}
+                isLocalView={activeTab === 'local'}
                 searchQuery={searchQuery}
                 onClearSearch={() => handleSearchChange('')}
                 formatFilter={formatFilter}

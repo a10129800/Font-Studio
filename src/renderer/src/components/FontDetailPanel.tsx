@@ -85,13 +85,12 @@ export const FontDetailPanel: React.FC<FontDetailPanelProps> = ({
               TrueType Collection (第 {font.face_index + 1} 面 / 共 {font.face_count} 面)
             </div>
           )}
-          <div className={`px-2.5 py-1 rounded text-[11px] font-medium border ${
-            font.install_scope === 'system'
-              ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
-              : font.install_scope === 'user'
+          <div className={`px-2.5 py-1 rounded text-[11px] font-medium border ${font.install_scope === 'system'
+            ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+            : font.install_scope === 'user'
               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
               : 'bg-studio-800 text-studio-400 border-studio-700'
-          }`}>
+            }`}>
             {font.install_scope === 'system' ? 'Windows 系統安裝' : font.install_scope === 'user' ? '目前使用者安裝' : '未安裝至系統'}
           </div>
           {font.is_missing && (
@@ -189,11 +188,10 @@ export const FontDetailPanel: React.FC<FontDetailPanelProps> = ({
                     if (inCollection) onRemoveFromCollection(col.id);
                     else onAddToCollection(col.id);
                   }}
-                  className={`text-[11px] px-2.5 py-1 rounded-md border transition-all ${
-                    inCollection
-                      ? 'bg-brand-600/20 border-brand-500 text-brand-300'
-                      : 'bg-studio-950 border-studio-800 text-studio-400 hover:border-studio-700 hover:text-white'
-                  }`}
+                  className={`text-[11px] px-2.5 py-1 rounded-md border transition-all ${inCollection
+                    ? 'bg-brand-600/20 border-brand-500 text-brand-300'
+                    : 'bg-studio-950 border-studio-800 text-studio-400 hover:border-studio-700 hover:text-white'
+                    }`}
                 >
                   {inCollection ? '✓ ' : '+ '}
                   {col.name}

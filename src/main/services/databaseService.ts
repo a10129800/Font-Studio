@@ -31,7 +31,40 @@ export class DatabaseService {
       this.dbPath = path.join(dir, 'font_studio.db');
     }
 
-    this.db = new Database(this.dbPath);
+    // Configure native addon path when running inside packaged Electron
+    const dbOptions: any = {};
+    try {
+      const proc = process as any;
+      const prebuildTarget = `${process.platform}-${process.arch}`;
+      const candidatePaths: string[] = [];
+
+      if (proc.resourcesPath) {
+        candidatePaths.push(
+          path.join(proc.resourcesPath, 'app.asar.unpacked', 'node_modules', 'better-sqlite3', 'prebuilds', `${prebuildTarget}.node`),
+          path.join(proc.resourcesPath, 'app.asar.unpacked', 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node')
+        );
+      }
+
+      if (process.execPath) {
+        candidatePaths.push(
+          path.join(path.dirname(process.execPath), 'resources', 'app.asar.unpacked', 'node_modules', 'better-sqlite3', 'prebuilds', `${prebuildTarget}.node`)
+        );
+      }
+
+      // Also try relative to this file inside ASAR
+      candidatePaths.push(
+        path.join(__dirname, '..', '..', '..', '..', 'app.asar.unpacked', 'node_modules', 'better-sqlite3', 'prebuilds', `${prebuildTarget}.node`)
+      );
+
+      for (const cand of candidatePaths) {
+        if (cand && fs.existsSync(cand)) {
+          dbOptions.nativeBinding = cand;
+          break;
+        }
+      }
+    } catch {}
+
+    this.db = new Database(this.dbPath, dbOptions);
     this.initPragmas();
     this.runMigrations();
   }

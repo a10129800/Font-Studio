@@ -3,7 +3,7 @@ import { IPC_CHANNELS } from '../../shared/channels';
 import { DatabaseService } from '../services/databaseService';
 import { FontScannerService } from '../services/fontScannerService';
 import { FontFilterOptions, ScanProgressUpdate } from '../../shared/types';
-import { isValidDirectoryPath } from '../utils/pathValidator';
+import { isValidDirectoryPath, isValidFilePath } from '../utils/pathValidator';
 
 export function registerFontIpc(
   db: DatabaseService,
@@ -42,12 +42,17 @@ export function registerFontIpc(
   // Start font scanning with progress events
   ipcMain.handle(IPC_CHANNELS.FONTS_START_SCAN, async (_event, customPaths?: unknown) => {
     let targetDirs: { path: string; source: 'system' | 'user' | 'imported' }[] | undefined;
+    const targetFiles: string[] = [];
 
     if (Array.isArray(customPaths)) {
       targetDirs = [];
       for (const p of customPaths) {
-        if (typeof p === 'string' && isValidDirectoryPath(p)) {
-          targetDirs.push({ path: p, source: 'imported' });
+        if (typeof p === 'string') {
+          if (isValidDirectoryPath(p)) {
+            targetDirs.push({ path: p, source: 'imported' });
+          } else if (isValidFilePath(p)) {
+            targetFiles.push(p);
+          }
         }
       }
     }
@@ -59,7 +64,7 @@ export function registerFontIpc(
       }
     };
 
-    return scanner.scanDirectories(targetDirs, onProgress);
+    return scanner.scanDirectories(targetDirs, onProgress, targetFiles);
   });
 
   // Cancel scanning

@@ -48,26 +48,44 @@ export class FontScannerService {
    */
   public async scanDirectories(
     targetDirs?: { path: string; source: 'system' | 'user' | 'imported' }[],
-    onProgress?: (progress: ScanProgressUpdate) => void
+    onProgress?: (progress: ScanProgressUpdate) => void,
+    targetFiles?: string[]
   ): Promise<{ successCount: number; failedCount: number; skippedCount: number; total: number }> {
     this.isCancelled = false;
 
-    const dirsToScan = targetDirs && targetDirs.length > 0 ? targetDirs : this.getDefaultFontDirectories();
+    const isCustomImport = Boolean(
+      (targetDirs && targetDirs.length > 0) || (targetFiles && targetFiles.length > 0)
+    );
+    const dirsToScan =
+      targetDirs && targetDirs.length > 0
+        ? targetDirs
+        : isCustomImport
+        ? []
+        : this.getDefaultFontDirectories();
 
     // 1. Discover all candidate font files
     const fileEntries: { filePath: string; source: 'system' | 'user' | 'imported' }[] = [];
+    const supportedExts = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc']);
+
+    // Directly include individual target files if specified
+    if (targetFiles && targetFiles.length > 0) {
+      for (const filePath of targetFiles) {
+        const ext = path.extname(filePath).toLowerCase();
+        if (supportedExts.has(ext) && fs.existsSync(filePath)) {
+          fileEntries.push({ filePath, source: 'imported' });
+        }
+      }
+    }
 
     onProgress?.({
       phase: 'discovering',
-      total: 0,
+      total: fileEntries.length,
       current: 0,
       currentFile: '正在搜尋字體檔案...',
       successCount: 0,
       failedCount: 0,
       skippedCount: 0,
     });
-
-    const supportedExts = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc']);
 
     for (const dir of dirsToScan) {
       if (!fs.existsSync(dir.path)) continue;
@@ -156,10 +174,12 @@ export class FontScannerService {
       }
     }
 
-    // 3. Mark missing files in scanned scopes
-    const discoveredPaths = new Set(fileEntries.map((e) => e.filePath));
-    for (const dir of dirsToScan) {
-      this.db.markMissingFonts(discoveredPaths, dir.source);
+    // 3. Mark missing files only in default full system scans; never mark missing on targeted imports
+    if (!isCustomImport) {
+      const discoveredPaths = new Set(fileEntries.map((e) => e.filePath));
+      for (const dir of dirsToScan) {
+        this.db.markMissingFonts(discoveredPaths, dir.source);
+      }
     }
 
     onProgress?.({
